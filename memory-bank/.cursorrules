@@ -1,0 +1,66 @@
+# Project Intelligence: MacOS Process Monitor
+
+## Project Patterns
+
+### Architecture Patterns
+- Project follows a modular design with clear separation between core functionality and interfaces
+- Core components communicate through standardized messages to facilitate future language migration
+- Interfaces (CLI, GUI, web) share the same core functionality but with different presentation
+
+### Implementation Patterns
+- Python with psutil for initial implementation
+- Core functionality designed with language-agnostic principles for potential future Go or Rust implementation
+- Simple data structures (dicts, lists, primitives) used for easy translation to other languages
+
+### User Experience Patterns
+- Command-line interface for initial functionality
+- Future GUI interface planned using PyQt/PySide
+- Future web interface planned with Python backend and HTML/JS frontend
+- All interfaces should provide consistent functionality and user experience
+
+## Project Preferences
+
+### Code Structure
+- Clear separation between core functionality and interfaces
+- Modular design with well-defined component boundaries
+- Comprehensive docstrings and type hints
+- Tests for all core functionality
+
+### Configuration
+- YAML-based configuration with sensible defaults
+- Support for user-specific configuration overrides
+- Command-line options for overriding configuration settings
+
+### Logging
+- Structured logging with timestamp, process information, and resource usage
+- Log rotation to manage disk usage
+- Multiple log levels (INFO, WARNING, ERROR)
+
+## Project Evolution
+
+### Current Phase
+- Initial setup and architecture design
+- Focus on core functionality implementation
+
+### Future Phases
+- Command-line interface implementation
+- GUI interface implementation
+- Web interface implementation
+- Potential migration to Go or Rust
+
+## Known Challenges
+
+### Cross-Platform Considerations
+- Initial focus on MacOS
+- psutil provides cross-platform capabilities if needed in the future
+- Core architecture designed to be platform-agnostic
+
+### Performance Considerations
+- Minimize monitoring overhead
+- Efficient process data collection
+- Optimized log writing and rotation
+
+### Interface Considerations
+- Consistent experience across multiple interfaces
+- Shared core functionality with different presentation layers
+- Efficient communication between components

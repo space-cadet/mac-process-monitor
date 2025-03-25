@@ -1,0 +1,44 @@
+# Default configuration for MacOS Process Monitor
+
+# Monitoring settings
+monitoring:
+  # Interval between checks in seconds
+  interval: 10
+  # Whether to run as a background daemon
+  daemon: false
+
+# Threshold settings
+thresholds:
+  # CPU usage threshold (percentage)
+  cpu: 80.0
+  # Memory usage threshold (percentage of total system memory)
+  memory: 15.0
+  # Minimum duration over threshold to trigger logging (in seconds)
+  duration: 30
+
+# Process settings
+processes:
+  # Whether to include system processes
+  include_system: true
+  # List of processes to ignore
+  ignore:
+    - kernel_task
+    - launchd
+    - WindowServer
+  # List of processes to always monitor (overrides ignore list)
+  always_monitor: []
+
+# Logging settings
+logging:
+  # Directory for log files
+  directory: ~/.procmon/logs
+  # Log file name format
+  filename: "procmon-%Y-%m-%d.log"
+  # Maximum size of log file before rotation (in bytes)
+  max_size: 10485760  # 10 MB
+  # Number of backup log files to keep
+  backup_count: 5
+  # Minimum log level
+  level: INFO
+  # Whether to include command line arguments in logs
+  include_cmdline: true
