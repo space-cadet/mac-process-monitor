@@ -13,10 +13,14 @@ export interface BatterySample {
 export interface ProcessSnapshot {
   pid: number;
   name: string;
-  cpuPercent: number;
+  cpuPercent: number;       // total CPU %
+  cpuUserPercent: number;   // user-space CPU %
+  cpuSystemPercent: number; // kernel-space CPU %
   memoryPercent: number;
   rssMB: number;
   vmsMB: number;
+  nice: number;             // process priority/nice value
+  state: string;            // running, sleeping, etc.
   cmdline: string;
 }
 
@@ -25,8 +29,30 @@ export interface SystemSnapshot {
   timestamp: number;
   battery: BatterySample;
   processes: ProcessSnapshot[];
-  cpuTotal: number;       // aggregate CPU %
-  memoryTotal: number;    // aggregate memory %
+  // CPU breakdown
+  cpuTotal: number;         // aggregate CPU %
+  cpuUser: number;          // user-space aggregate %
+  cpuSystem: number;        // kernel-space aggregate %
+  cpuIdle: number;          // idle %
+  // Memory breakdown
+  memoryTotal: number;      // aggregate memory %
+  memoryUsedMB: number;     // absolute used memory
+  memoryFreeMB: number;     // absolute free memory
+  swapUsedMB: number;
+  swapTotalMB: number;
+  // Load
+  loadAvg: number;          // 1-minute load average (from currentLoad.avgLoad)
+  // Disk I/O (system-level cumulative counters)
+  diskReadIO: number | null;
+  diskWriteIO: number | null;
+  diskTotalIO: number | null;
+  // Network I/O (system-level cumulative counters, first active interface)
+  netRxBytes: number | null;
+  netTxBytes: number | null;
+  // Disk usage (primary mount)
+  fsUsedPercent: number | null;
+  // Thermal
+  cpuTemp: number | null;
 }
 
 // Drain event - detected rapid battery drop

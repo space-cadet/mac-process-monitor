@@ -116,9 +116,28 @@ export class Monitor {
     }
   }
 
-  private sendAlert(event: DrainEvent): void {
-    // Placeholder — will implement Telegram integration
-    console.log('[Alert] Would send Telegram notification for drain event', event.id);
+  private async sendAlert(event: DrainEvent): Promise<void> {
+    const message = this.formatAlertMessage(event);
+    console.log('[Alert] Drain event detected:');
+    console.log(message);
+
+    // TODO: Implement actual Telegram/OpenClaw dispatch
+    // For now, log to console. Override this method or pass a handler
+    // to Monitor constructor for real alerting.
+  }
+
+  private formatAlertMessage(event: DrainEvent): string {
+    const lines = [
+      `⚠️ RAPID BATTERY DRAIN DETECTED`,
+      ``,
+      `Battery: ${event.startPercent}% → ${event.endPercent}%`,
+      `Rate: ${event.drainRate.toFixed(2)}% per minute`,
+      `Duration: ${event.durationMinutes.toFixed(1)} minutes`,
+      ``,
+      `Top CPU processes during drain:`,
+      ...event.topProcesses.map(p => `  • ${p.name} (PID ${p.pid}): ${p.cpuPercent.toFixed(1)}% CPU`),
+    ];
+    return lines.join('\n');
   }
 
   getStats() {

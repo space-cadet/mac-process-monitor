@@ -1,6 +1,6 @@
 # Active Context
 
-*Last Updated: 2026-05-18 19:30 IST*
+*Last Updated: 2026-05-19 14:53 IST*
 
 ## Current Tasks
 1. **[T1]**: TypeScript Rewrite — Core Monitor with Battery + Process Tracking (HIGH priority)
@@ -26,15 +26,17 @@
 
 ## Completed Tasks (Recent)
 - T1: TypeScript rewrite — battery, process tracking, drain detection, SQLite storage
+- Memory bank synced with actual TypeScript stack (2026-05-19)
 
 ## Next Steps
-- T2: Telegram alerting — integrate OpenClaw message tool
+- T2: Telegram/OpenClaw alerting — integrate OpenClaw message tool
 - T3: Process queries — `npx tsx src/query.ts --process Chrome --since 2h`
 - T4: Web dashboard — live battery/CPU charts on port 3456
 - T5: Swift menubar — native macOS app (future)
 
 ## System Status
-- **Battery**: 74%, not charging, 549 min remaining
+- **Battery**: 74%, not charging, 549 min remaining (sample from 2026-05-18)
 - **Memory**: 94.1% used (8GB machine)
 - **DB**: ~/.procmon/monitor.db with snapshots + process samples
 - **Tests**: All core modules validated (test-basic, test-collector, test-analyzer, show-data)
+- **Memory Bank**: Stale Python references removed, TS stack documented
