@@ -18,6 +18,21 @@ The monitor follows a pipeline architecture where each stage is independent and 
                   │              (orchestrator: start/stop/tick)                │
                   │                                                              │
                   └──────────────────────────────────────────────────────────────┘
+                                     │
+                                     │ WAL mode
+                                     │ (concurrent reads)
+                                     ▼
+                           ┌─────────────────────┐
+                           │   DashboardServer   │
+                           │   (port 3456)       │
+                           │   Native Node http  │
+                           └─────────────────────┘
+                                     │
+                                     ▼
+                           ┌─────────────────────┐
+                           │  Chart.js + HTML    │
+                           │  (public/index.html)│
+                           └─────────────────────┘
 ```
 
 ## Key Components
@@ -47,6 +62,18 @@ The monitor follows a pipeline architecture where each stage is independent and 
 - `insertSnapshot()`: writes 1 snapshot row + N process rows in a transaction
 - `insertDrainEvent()`: stores event + serialized top processes JSON
 - `cleanupOldSamples()`: deletes snapshots older than retention days (cascade via FK)
+
+### DashboardServer (`src/dashboard/server.ts`)
+- Native Node.js `http` server — no Express dependency
+- Serves static files from `public/` (index.html, app.js, style.css)
+- Four JSON API endpoints query `TimeSeriesDB` directly:
+  - `/api/snapshots?minutes=N` — recent system snapshots
+  - `/api/processes?limit=N` — top processes from latest snapshot
+  - `/api/drain-events` — all drain events
+  - `/api/stats` — DB snapshot/event counts
+- WAL mode enables concurrent reads without blocking the monitor writer
+- Standalone entry point (`src/dashboard.ts`) — runs independently of monitor
+- Port 3456, no auth (local-only)
 
 ### Monitor (`src/core/Monitor.ts`)
 - Orchestrator: `start()` → recurring `tick()` every `sampleIntervalSeconds`

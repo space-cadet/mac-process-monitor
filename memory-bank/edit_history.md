@@ -7,6 +7,20 @@
 
 ## 2026-05-19
 
+#### 15:20 IST - T4: Web dashboard + Playwright tests COMPLETED
+- Created `src/dashboard/server.ts` - Native Node.js HTTP server with static file serving + 4 JSON API endpoints
+- Created `src/dashboard.ts` - Standalone dashboard entry point with SIGINT/SIGTERM handling
+- Created `src/dashboard/public/index.html` - Dashboard UI with Chart.js CDN, dark theme, grid layout
+- Created `src/dashboard/public/app.js` - Frontend: 4 live charts (CPU/memory, battery, load/swap/temp, disk/network), process table, drain events table, auto-refresh every 5s
+- Created `src/dashboard/public/style.css` - Dark theme (#0f172a background, card-based, responsive)
+- Created `src/dashboard/test/dashboard.spec.ts` - Playwright E2E tests: page loads, charts render, process table has rows, drain events visible, screenshot capture
+- Created `playwright.config.ts` - Playwright configuration with Chromium project
+- Modified `src/storage/TimeSeriesDB.ts` - Added `getRecentSnapshotsRaw()` and `getLatestProcesses()` for dashboard API
+- Modified `package.json` - Added `dashboard` script (`tsx src/dashboard.ts`)
+- Installed `@playwright/test` via pnpm, downloaded Chromium binaries
+- All 5 Playwright tests passing (19.7s)
+- Screenshot captured: `dashboard-screenshot.png` (163KB)
+
 #### 15:20 IST - T1: Memory bank full update + implementation docs
 - Created `memory-bank/implementation-details/core-pipeline.md` - Comprehensive implementation documentation covering SystemCollector, DrainAnalyzer, TimeSeriesDB, Monitor orchestrator, type system, ESM conventions, known quirks
 - Updated `memory-bank/session_cache.md` - Current session metadata, expanded T1 status, system status
