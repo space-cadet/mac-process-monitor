@@ -5,7 +5,9 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/main.ts",
+    "monitor": "tsx src/main.ts",
+    "dashboard": "tsx src/web/server.ts",
+    "show-data": "tsx src/show-data.ts",
     "start": "node dist/main.js",
     "test": "jest"
   },

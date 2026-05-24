@@ -33,7 +33,7 @@ export class SystemCollector {
       name: p.name,
       cpuPercent: p.cpu,
       memoryPercent: p.memRss * 1024 / memTotal.total * 100,  // memRss is in KB
-      rssMB: Math.round(p.memRss / 1024 * 100) / 100,  // KB to MB
+      rssMB: Math.round(p.memRss / 1024 * 100) / 100,  // KB to MB (memRss is in KB)
       vmsMB: Math.round(p.memVsz / 1024 / 1024 * 100) / 100,
       cmdline: p.command || p.name,
     }));

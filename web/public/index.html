@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mac Process Monitor</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="brand-icon">🔋</div>
+        <div>
+          <h1>Mac Process Monitor</h1>
+          <span>Real-time battery & process tracking</span>
+        </div>
+      </div>
+      <div class="live-badge">
+        <div class="live-dot" id="liveDot"></div>
+        <span id="liveText">Live • Connecting...</span>
+      </div>
+    </header>
+
+    <div class="kpi-grid">
+      <div class="kpi-card battery">
+        <div class="kpi-label">Battery</div>
+        <div class="kpi-value" id="batteryValue">--<span>%</span></div>
+        <div class="battery-visual">
+          <div class="battery-body">
+            <div class="battery-fill" id="batteryFill"></div>
+          </div>
+          <span id="batteryStatus" style="font-size: 12px; color: var(--text-dim);">--</span>
+        </div>
+        <div class="kpi-detail" id="batteryDetail">--</div>
+      </div>
+
+      <div class="kpi-card cpu">
+        <div class="kpi-label">CPU Total</div>
+        <div class="kpi-value" id="cpuValue">--<span>%</span></div>
+        <div class="kpi-trend" id="cpuTrend">
+          <span>◆</span> <span id="cpuTrendText">--</span>
+        </div>
+        <div class="kpi-detail" id="cpuDetail">--</div>
+      </div>
+
+      <div class="kpi-card memory">
+        <div class="kpi-label">Memory</div>
+        <div class="kpi-value" id="memValue">--<span>GB</span></div>
+        <div class="kpi-value" style="font-size: 18px; color: var(--text-dim); margin-top: -4px;" id="memPercent">--</div>
+        <div class="kpi-detail" id="memDetail">--</div>
+      </div>
+
+      <div class="kpi-card status">
+        <div class="kpi-label">Status</div>
+        <div class="kpi-value" style="font-size: 24px; margin-top: 6px;" id="statusValue">--</div>
+        <div class="kpi-trend" id="statusTrend">
+          <span>◆</span> <span id="statusTrendText">--</span>
+        </div>
+        <div class="kpi-detail" id="statusDetail">--</div>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Top Processes by CPU</div>
+          <div class="panel-actions">
+            <button class="panel-btn active" onclick="sortProcesses('cpu', this)">CPU ▼</button>
+            <button class="panel-btn" onclick="sortProcesses('mem', this)">Mem ▲</button>
+          </div>
+        </div>
+        <table class="process-table">
+          <thead>
+            <tr>
+              <th>Process</th>
+              <th>PID</th>
+              <th>CPU</th>
+              <th>Memory</th>
+            </tr>
+          </thead>
+          <tbody id="processTable">
+            <tr><td colspan="4" style="text-align: center; color: var(--text-dim);">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title" style="--panel-accent: var(--accent-battery);">Battery History</div>
+          <div class="panel-actions">
+            <button class="panel-btn active" onclick="loadHistory(60, this)">1h</button>
+            <button class="panel-btn" onclick="loadHistory(360, this)">6h</button>
+            <button class="panel-btn" onclick="loadHistory(1440, this)">24h</button>
+          </div>
+        </div>
+        <div class="chart-container" id="batteryChart">
+          <div style="color: var(--text-dim); font-size: 13px;">Loading chart...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title" style="--panel-accent: var(--accent-drain);">Recent Drain Events</div>
+        <div class="panel-actions">
+          <button class="panel-btn" onclick="exportCSV()">Export CSV</button>
+        </div>
+      </div>
+      <div class="drain-list" id="drainList">
+        <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading...</div>
+      </div>
+    </div>
+
+    <footer>
+      Mac Process Monitor v2.0 • SQLite time-series storage • Auto-refresh every 5s
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -168,6 +168,55 @@ export class TimeSeriesDB {
     };
   }
 
+  getLatestSnapshot(): SystemSnapshot | null {
+    const stmt = this.db.prepare(`
+      SELECT * FROM snapshots ORDER BY timestamp DESC LIMIT 1
+    `);
+    const row = stmt.get() as any;
+    if (!row) return null;
+
+    // Get processes for this snapshot
+    const procStmt = this.db.prepare(`
+      SELECT * FROM process_samples WHERE snapshot_id = ? ORDER BY cpu_percent DESC
+    `);
+    const processes = procStmt.all(row.id) as any[];
+
+    return {
+      timestamp: row.timestamp,
+      battery: {
+        timestamp: row.timestamp,
+        percent: row.battery_percent,
+        isCharging: !!row.is_charging,
+        isPlugged: !!row.is_charging,
+        timeRemaining: null,
+        cycleCount: null,
+        temperature: null,
+      },
+      processes: processes.map(p => ({
+        pid: p.pid,
+        name: p.name,
+        cpuPercent: p.cpu_percent,
+        memoryPercent: p.memory_percent,
+        rssMB: p.rss_mb,
+        vmsMB: 0,
+        cmdline: p.cmdline,
+      })),
+      cpuTotal: row.cpu_total,
+      memoryTotal: row.memory_total,
+    };
+  }
+
+  getSnapshotHistory(minutes: number = 60): { timestamp: number; batteryPercent: number; cpuTotal: number; memoryTotal: number }[] {
+    const cutoff = Date.now() - minutes * 60000;
+    const stmt = this.db.prepare(`
+      SELECT timestamp, battery_percent, cpu_total, memory_total 
+      FROM snapshots 
+      WHERE timestamp > ? 
+      ORDER BY timestamp ASC
+    `);
+    return stmt.all(cutoff) as any[];
+  }
+
   close(): void {
     this.db.close();
   }
