@@ -131,6 +131,17 @@ export class TimeSeriesDB {
       );
       CREATE INDEX IF NOT EXISTS idx_drain_time ON drain_events(start_time);
     `);
+
+    // Monitoring profiles - user-defined watchlists
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS monitoring_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        color TEXT NOT NULL DEFAULT '#3b82f6',
+        processes_json TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+    `);
   }
 
   insertSnapshot(snapshot: SystemSnapshot): number {
@@ -340,6 +351,92 @@ export class TimeSeriesDB {
       ORDER BY timestamp ASC
     `);
     return stmt.all(cutoff) as any[];
+  }
+
+  // ─── Process-centric queries (T3) ───
+
+  getProcessHistory(name: string, sinceTimestamp: number): any[] {
+    const stmt = this.db.prepare(`
+      SELECT ps.*, s.timestamp
+      FROM process_samples ps
+      JOIN snapshots s ON ps.snapshot_id = s.id
+      WHERE ps.name LIKE ? AND s.timestamp > ?
+      ORDER BY s.timestamp ASC
+    `);
+    return stmt.all(`%${name}%`, sinceTimestamp) as any[];
+  }
+
+  getProcessStats(name: string, sinceTimestamp: number): { avgCpu: number; peakCpu: number; avgMem: number; peakMem: number; samples: number } | null {
+    const stmt = this.db.prepare(`
+      SELECT 
+        AVG(ps.cpu_percent) as avg_cpu,
+        MAX(ps.cpu_percent) as peak_cpu,
+        AVG(ps.memory_percent) as avg_mem,
+        MAX(ps.memory_percent) as peak_mem,
+        COUNT(*) as samples
+      FROM process_samples ps
+      JOIN snapshots s ON ps.snapshot_id = s.id
+      WHERE ps.name LIKE ? AND s.timestamp > ?
+    `);
+    return stmt.get(`%${name}%`, sinceTimestamp) as any || null;
+  }
+
+  getTopProcesses(metric: 'cpu' | 'mem', limit: number, sinceTimestamp: number): any[] {
+    const avgCol = metric === 'cpu' ? 'AVG(cpu_percent)' : 'AVG(memory_percent)';
+    const peakCol = metric === 'cpu' ? 'MAX(cpu_percent)' : 'MAX(memory_percent)';
+
+    const stmt = this.db.prepare(`
+      SELECT 
+        name,
+        ${avgCol} as avg_${metric},
+        ${peakCol} as peak_${metric},
+        COUNT(*) as samples,
+        GROUP_CONCAT(cpu_percent) as cpu_values
+      FROM process_samples ps
+      JOIN snapshots s ON ps.snapshot_id = s.id
+      WHERE s.timestamp > ?
+      GROUP BY name
+      ORDER BY avg_${metric} DESC
+      LIMIT ?
+    `);
+    const rows = stmt.all(sinceTimestamp, limit) as any[];
+    return rows.map(r => ({
+      ...r,
+      values: r.cpu_values ? r.cpu_values.split(',').map(Number) : [],
+    }));
+  }
+
+  // ─── Monitoring Profiles ───
+
+  getProfiles(): any[] {
+    const stmt = this.db.prepare('SELECT * FROM monitoring_profiles ORDER BY created_at DESC');
+    const rows = stmt.all() as any[];
+    return rows.map(r => ({
+      id: r.id,
+      name: r.name,
+      color: r.color,
+      processes: JSON.parse(r.processes_json),
+      createdAt: r.created_at,
+    }));
+  }
+
+  saveProfile(profile: { id: string; name: string; color?: string; processes: any[] }): void {
+    const stmt = this.db.prepare(`
+      INSERT OR REPLACE INTO monitoring_profiles (id, name, color, processes_json, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      profile.id,
+      profile.name,
+      profile.color || '#3b82f6',
+      JSON.stringify(profile.processes),
+      Date.now()
+    );
+  }
+
+  deleteProfile(id: string): void {
+    const stmt = this.db.prepare('DELETE FROM monitoring_profiles WHERE id = ?');
+    stmt.run(id);
   }
 
   close(): void {

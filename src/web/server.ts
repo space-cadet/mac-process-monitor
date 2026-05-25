@@ -76,6 +76,96 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/process-history') {
+    try {
+      const name = url.searchParams.get('name') || '';
+      const minutes = parseInt(url.searchParams.get('minutes') || '30');
+      const cutoff = Date.now() - minutes * 60000;
+      const history = db.getProcessHistory(name, cutoff);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(history));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/process-stats') {
+    try {
+      const name = url.searchParams.get('name') || '';
+      const minutes = parseInt(url.searchParams.get('minutes') || '60');
+      const cutoff = Date.now() - minutes * 60000;
+      const stats = db.getProcessStats(name, cutoff);
+      const history = db.getProcessHistory(name, cutoff);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        name,
+        minutes,
+        stats,
+        sampleCount: history.length,
+        pids: [...new Set(history.map(h => h.pid))],
+        firstSeen: history[0]?.timestamp || null,
+        lastSeen: history[history.length - 1]?.timestamp || null,
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/top-processes') {
+    try {
+      const metric = (url.searchParams.get('metric') || 'cpu') as 'cpu' | 'mem';
+      const limit = parseInt(url.searchParams.get('limit') || '10');
+      const minutes = parseInt(url.searchParams.get('minutes') || '5');
+      const cutoff = Date.now() - minutes * 60000;
+      const top = db.getTopProcesses(metric, limit, cutoff);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ metric, limit, minutes, processes: top }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/profiles') {
+    try {
+      if (req.method === 'GET') {
+        const profiles = db.getProfiles?.() || [];
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(profiles));
+      } else if (req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+          try {
+            const profile = JSON.parse(body);
+            db.saveProfile?.(profile);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
+          } catch (e) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          }
+        });
+        return;
+      } else if (req.method === 'DELETE') {
+        const id = url.searchParams.get('id');
+        if (id) db.deleteProfile?.(id);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
   // Static files
   let filePath = pathname === '/' ? '/index.html' : pathname;
   const fullPath = join(__dirname, '../../web/public', filePath);

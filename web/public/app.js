@@ -72,12 +72,38 @@ function updateDashboard(data) {
   renderProcesses();
 }
 
+function sortByColumn(column) {
+  // Toggle direction if clicking same column
+  if (currentSort.column === column) {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.column = column;
+    currentSort.direction = 'desc'; // Default to descending for new column
+  }
+  renderProcesses();
+  updateSortIndicators();
+}
+
+function updateSortIndicators() {
+  const headers = document.querySelectorAll('.process-table th');
+  const colNames = ['Process', 'PID', 'CPU', 'Memory'];
+  headers.forEach((th, idx) => {
+    const colKey = ['process', 'pid', 'cpu', 'memory'][idx];
+    const baseText = colNames[idx];
+    if (colKey === currentSort.column) {
+      th.textContent = baseText + (currentSort.direction === 'asc' ? ' ↑' : ' ↓');
+    } else {
+      th.textContent = baseText;
+    }
+  });
+}
+
 function renderProcesses() {
   const tbody = document.getElementById('processTable');
   const sorted = [...currentProcesses].sort((a, b) => {
     let valA, valB;
     switch (currentSort.column) {
-      case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+      case 'process': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
       case 'pid': valA = a.pid; valB = b.pid; break;
       case 'cpu': valA = a.cpuPercent; valB = b.cpuPercent; break;
       case 'memory': valA = a.memoryPercent; valB = b.memoryPercent; break;
@@ -87,60 +113,27 @@ function renderProcesses() {
     return valA < valB ? 1 : -1;
   }).slice(0, 10);
 
-  tbody.innerHTML = sorted.map(p => {
-    return `
-      <tr>
-        <td>
-          <div class="process-name">
-            <div class="process-icon">◆</div>
-            <span>${p.name}</span>
+  tbody.innerHTML = sorted.map(p => `
+    <tr onclick="showProcessModal('${p.name.replace(/'/g, "\\'")}')" style="cursor: pointer;">
+      <td>
+        <div class="process-name">
+          <div class="process-icon">◆</div>
+          <span>${p.name}</span>
+        </div>
+      </td>
+      <td>${p.pid}</td>
+      <td>
+        <div class="cpu-bar">
+          <span>${p.cpuPercent.toFixed(1)}%</span>
+          <div class="cpu-bar-track">
+            <div class="cpu-bar-fill ${p.cpuPercent > 50 ? 'high' : ''}" style="width: ${Math.min(p.cpuPercent, 100)}%;"></div>
           </div>
-        </td>
-        <td>${p.pid}</td>
-        <td>
-          <div class="cpu-bar">
-            <span>${p.cpuPercent.toFixed(1)}%</span>
-            <div class="cpu-bar-track">
-              <div class="cpu-bar-fill ${p.cpuPercent > 50 ? 'high' : ''}" style="width: ${Math.min(p.cpuPercent, 100)}%;"></div>
-            </div>
-          </div>
-        </td>
-        <td>
-          <div class="cpu-bar">
-            <span>${p.rssMB.toFixed(0)} MB</span>
-            <div class="cpu-bar-track">
-              <div class="cpu-bar-fill ${p.memoryPercent > 50 ? 'high' : ''}" style="width: ${Math.min(p.memoryPercent, 100)}%;"></div>
-            </div>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
-  
-  updateSortHeaders();
-}
-
-function updateSortHeaders() {
-  const headers = document.querySelectorAll('.process-table th');
-  const sortIndicator = (column) => {
-    if (currentSort.column !== column) return '';
-    return currentSort.direction === 'asc' ? ' ▲' : ' ▼';
-  };
-  
-  headers[0].innerHTML = `Process${sortIndicator('name')}`;
-  headers[1].innerHTML = `PID${sortIndicator('pid')}`;
-  headers[2].innerHTML = `CPU${sortIndicator('cpu')}`;
-  headers[3].innerHTML = `Memory${sortIndicator('memory')}`;
-}
-
-function sortByColumn(column) {
-  if (currentSort.column === column) {
-    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
-  } else {
-    currentSort.column = column;
-    currentSort.direction = 'desc';
-  }
-  renderProcesses();
+        </div>
+      </td>
+      <td>${p.rssMB.toFixed(0)} MB</td>
+    </tr>
+  `).join('');
+  updateSortIndicators();
 }
 
 function sortProcesses(by, clickedBtn) {
@@ -180,47 +173,18 @@ function renderChart(data) {
     return;
   }
 
-  // SVG line chart
-  const width = 800;
-  const height = 200;
-  const padding = { top: 10, right: 10, bottom: 10, left: 10 };
-  const chartWidth = width - padding.left - padding.right;
-  const chartHeight = height - padding.top - padding.bottom;
-
   const maxVal = 100;
-  const minVal = 0;
-
-  // Create points
-  const points = data.map((d, i) => {
+  const bars = data.map(d => {
     const percent = d.battery_percent ?? d.batteryPercent ?? 0;
-    const x = padding.left + (i / (data.length - 1)) * chartWidth;
-    const y = padding.top + chartHeight - ((percent - minVal) / (maxVal - minVal)) * chartHeight;
-    return { x, y, percent, timestamp: d.timestamp };
-  });
+    const height = (percent / maxVal) * 100;
+    const time = new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `
+      <div class="chart-bar" style="height: ${height}%;" data-value="${percent.toFixed(0)}% @ ${time}">
+      </div>
+    `;
+  }).join('');
 
-  // Build path
-  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-
-  // Area path (for gradient fill)
-  const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${padding.top + chartHeight} L ${points[0].x.toFixed(1)} ${padding.top + chartHeight} Z`;
-
-  const svg = `
-    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: 100%;">
-      <defs>
-        <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="var(--accent-battery)" stop-opacity="0.3"/>
-          <stop offset="100%" stop-color="var(--accent-battery)" stop-opacity="0"/>
-        </linearGradient>
-      </defs>
-      <path d="${areaD}" fill="url(#areaGradient)" stroke="none"/>
-      <path d="${pathD}" fill="none" stroke="var(--accent-battery)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-      ${points.map((p, i) => i % Math.ceil(points.length / 20) === 0 ? 
-        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="var(--accent-battery)" stroke="var(--surface)" stroke-width="1"/>
-        <title>${p.percent}% @ ${new Date(p.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</title>` : '').join('')}
-    </svg>
-  `;
-
-  container.innerHTML = svg;
+  container.innerHTML = bars;
 
   // X-axis labels: show first, middle, last timestamps
   if (xAxis) {
@@ -276,6 +240,249 @@ function renderDrainEvents(events) {
   }).join('');
 }
 
+// Process Detail Modal
+let currentModalProcess = null;
+
+function showProcessModal(processName) {
+  currentModalProcess = processName;
+  document.getElementById('modalTitle').textContent = processName;
+  document.getElementById('processModal').style.display = 'flex';
+  loadProcessHistory(30);
+}
+
+function closeProcessModal() {
+  document.getElementById('processModal').style.display = 'none';
+  currentModalProcess = null;
+}
+
+async function loadProcessHistory(minutes) {
+  if (!currentModalProcess) return;
+
+  const buttons = document.querySelectorAll('.modal-time-range .panel-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+  const activeBtn = Array.from(buttons).find(b => b.textContent === (minutes < 60 ? minutes + 'm' : (minutes / 60) + 'h'));
+  if (activeBtn) activeBtn.classList.add('active');
+
+  try {
+    const [historyRes, statsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/process-history?name=${encodeURIComponent(currentModalProcess)}&minutes=${minutes}`),
+      fetch(`${API_BASE}/api/process-stats?name=${encodeURIComponent(currentModalProcess)}&minutes=${minutes}`)
+    ]);
+
+    const history = await historyRes.json();
+    const stats = await statsRes.json();
+
+    renderModalStats(stats);
+    renderModalChart(history);
+  } catch (err) {
+    console.error('Process history error:', err);
+    document.getElementById('modalStats').innerHTML = `<div style="color: var(--text-dim);">Error loading data</div>`;
+  }
+}
+
+function renderModalStats(stats) {
+  const s = stats.stats || {};
+  const html = `
+    <div class="modal-stat">
+      <div class="modal-stat-value">${(s.avg_cpu || 0).toFixed(1)}%</div>
+      <div class="modal-stat-label">Avg CPU</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-value">${(s.peak_cpu || 0).toFixed(1)}%</div>
+      <div class="modal-stat-label">Peak CPU</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-value">${stats.sampleCount || 0}</div>
+      <div class="modal-stat-label">Samples</div>
+    </div>
+  `;
+  document.getElementById('modalStats').innerHTML = html;
+}
+
+function renderModalChart(history) {
+  const container = document.getElementById('modalChart');
+  if (!history.length) {
+    container.innerHTML = '<div style="color: var(--text-dim); font-size: 13px;">No data</div>';
+    return;
+  }
+
+  const maxCpu = Math.max(...history.map(h => h.cpu_percent), 1);
+  const bars = history.map(h => {
+    const height = (h.cpu_percent / maxCpu) * 100;
+    const time = new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<div class="modal-chart-bar" style="height: ${height}%;" title="${h.cpu_percent.toFixed(1)}% @ ${time}"></div>`;
+  }).join('');
+
+  container.innerHTML = bars;
+}
+
+async function loadProfiles() {
+  try {
+    const res = await fetch(`${API_BASE}/api/profiles`);
+    profiles = await res.json();
+    renderProfiles();
+  } catch (err) {
+    console.error('Profile load error:', err);
+    document.getElementById('profileList').innerHTML =
+      `<div style="padding: 20px; color: var(--text-dim); text-align: center;">Failed to load profiles</div>`;
+  }
+}
+
+function renderProfiles() {
+  const container = document.getElementById('profileList');
+  if (!profiles.length) {
+    container.innerHTML = `<div style="padding: 20px; color: var(--text-dim); text-align: center;">No profiles yet. Click "+ New Profile" to create one.</div>`;
+    return;
+  }
+
+  container.innerHTML = profiles.map(p => {
+    const processTags = p.processes.map(proc =>
+      `<span class="profile-process-tag">${proc.name}</span>`
+    ).join('');
+
+    return `
+      <div class="profile-card" style="--profile-color: ${p.color}" onclick="viewProfile('${p.id}')">
+        <div class="profile-card-header">
+          <span class="profile-card-name">${p.name}</span>
+          <span class="profile-card-status">${p.processes.length} processes</span>
+        </div>
+        <div class="profile-card-processes">${processTags}</div>
+        <div class="profile-actions">
+          <button class="panel-btn" onclick="event.stopPropagation(); editProfile('${p.id}')">Edit</button>
+          <button class="panel-btn" onclick="event.stopPropagation(); deleteProfile('${p.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function showProfileModal(profileId = null) {
+  editingProfileId = profileId;
+  const profile = profileId ? profiles.find(p => p.id === profileId) : null;
+
+  document.getElementById('profileModalTitle').textContent = profile ? 'Edit Profile' : 'New Profile';
+  document.getElementById('profileName').value = profile?.name || '';
+  document.getElementById('profileColor').value = profile?.color || '#3b82f6';
+
+  const processesContainer = document.getElementById('profileProcesses');
+  processesContainer.innerHTML = '';
+
+  if (profile?.processes?.length) {
+    profile.processes.forEach(proc => addProcessField(proc.name, proc.cpuThreshold, proc.memThreshold));
+  } else {
+    addProcessField();
+  }
+
+  document.getElementById('profileModal').style.display = 'flex';
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModal').style.display = 'none';
+  editingProfileId = null;
+}
+
+function addProcessField(name = '', cpuThreshold = '', memThreshold = '') {
+  const container = document.getElementById('profileProcesses');
+  const div = document.createElement('div');
+  div.className = 'process-field';
+  div.innerHTML = `
+    <input type="text" placeholder="Process name" value="${name}" class="proc-name">
+    <input type="number" placeholder="CPU %" value="${cpuThreshold}" class="field-small proc-cpu" title="CPU threshold %">
+    <input type="number" placeholder="Mem MB" value="${memThreshold}" class="field-small proc-mem" title="Memory threshold MB">
+    <button onclick="this.parentElement.remove()">×</button>
+  `;
+  container.appendChild(div);
+}
+
+async function saveProfile() {
+  const name = document.getElementById('profileName').value.trim();
+  const color = document.getElementById('profileColor').value;
+
+  if (!name) {
+    alert('Please enter a profile name');
+    return;
+  }
+
+  const processFields = document.querySelectorAll('.process-field');
+  const processes = Array.from(processFields).map(field => ({
+    name: field.querySelector('.proc-name').value.trim(),
+    cpuThreshold: parseFloat(field.querySelector('.proc-cpu').value) || null,
+    memThreshold: parseFloat(field.querySelector('.proc-mem').value) || null,
+  })).filter(p => p.name);
+
+  if (!processes.length) {
+    alert('Please add at least one process');
+    return;
+  }
+
+  const profile = {
+    id: editingProfileId || 'profile_' + Date.now(),
+    name,
+    color,
+    processes,
+  };
+
+  try {
+    const res = await fetch(`${API_BASE}/api/profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    });
+
+    if (res.ok) {
+      closeProfileModal();
+      loadProfiles();
+    } else {
+      alert('Failed to save profile');
+    }
+  } catch (err) {
+    console.error('Save profile error:', err);
+    alert('Failed to save profile: ' + err.message);
+  }
+}
+
+async function deleteProfile(id) {
+  if (!confirm('Delete this profile?')) return;
+
+  try {
+    const res = await fetch(`${API_BASE}/api/profiles?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      loadProfiles();
+    }
+  } catch (err) {
+    console.error('Delete profile error:', err);
+  }
+}
+
+function editProfile(id) {
+  showProfileModal(id);
+}
+
+function viewProfile(id) {
+  const profile = profiles.find(p => p.id === id);
+  if (!profile) return;
+
+  const names = profile.processes.map(p => p.name.toLowerCase());
+  const filtered = currentProcesses.filter(p =>
+    names.some(n => p.name.toLowerCase().includes(n))
+  );
+
+  if (filtered.length) {
+    currentProcesses = filtered;
+    renderProcesses();
+    setTimeout(() => {
+      const actions = document.querySelector('.panel-actions');
+      if (!actions.querySelector('.show-all-btn')) {
+        const btn = document.createElement('button');
+        btn.className = 'panel-btn show-all-btn';
+        btn.textContent = 'Show All';
+        btn.onclick = () => { fetchData(); };
+        actions.appendChild(btn);
+      }
+    }, 100);
+  }
+}
+
 function exportCSV() {
   fetch(`${API_BASE}/api/drain-events`)
     .then(r => r.json())
@@ -305,11 +512,260 @@ function exportCSV() {
     .catch(err => alert('Export failed: ' + err.message));
 }
 
+// ─── Process Detail Modal ───
+function showProcessModal(processName) {
+  currentModalProcess = processName;
+  document.getElementById('modalTitle').textContent = processName;
+  document.getElementById('processModal').style.display = 'flex';
+  loadProcessHistory(30);
+}
+
+function closeProcessModal() {
+  document.getElementById('processModal').style.display = 'none';
+  currentModalProcess = null;
+}
+
+async function loadProcessHistory(minutes) {
+  if (!currentModalProcess) return;
+  
+  // Update button states
+  const buttons = document.querySelectorAll('.modal-time-range .panel-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+  const activeBtn = Array.from(buttons).find(b => b.textContent === (minutes < 60 ? minutes + 'm' : (minutes / 60) + 'h'));
+  if (activeBtn) activeBtn.classList.add('active');
+
+  try {
+    const [historyRes, statsRes] = await Promise.all([
+      fetch(`${API_BASE}/api/process-history?name=${encodeURIComponent(currentModalProcess)}&minutes=${minutes}`),
+      fetch(`${API_BASE}/api/process-stats?name=${encodeURIComponent(currentModalProcess)}&minutes=${minutes}`)
+    ]);
+    
+    const history = await historyRes.json();
+    const stats = await statsRes.json();
+    
+    renderModalStats(stats);
+    renderModalChart(history);
+  } catch (err) {
+    console.error('Process history error:', err);
+    document.getElementById('modalStats').innerHTML = `<div style="color: var(--text-dim);">Error loading data</div>`;
+  }
+}
+
+function renderModalStats(stats) {
+  const s = stats.stats || {};
+  const html = `
+    <div class="modal-stat">
+      <div class="modal-stat-value">${(s.avg_cpu || 0).toFixed(1)}%</div>
+      <div class="modal-stat-label">Avg CPU</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-value">${(s.peak_cpu || 0).toFixed(1)}%</div>
+      <div class="modal-stat-label">Peak CPU</div>
+    </div>
+    <div class="modal-stat">
+      <div class="modal-stat-value">${stats.sampleCount || 0}</div>
+      <div class="modal-stat-label">Samples</div>
+    </div>
+  `;
+  document.getElementById('modalStats').innerHTML = html;
+}
+
+function renderModalChart(history) {
+  const container = document.getElementById('modalChart');
+  if (!history.length) {
+    container.innerHTML = '<div style="color: var(--text-dim); font-size: 13px;">No data</div>';
+    return;
+  }
+  
+  const maxCpu = Math.max(...history.map(h => h.cpu_percent), 1);
+  const bars = history.map(h => {
+    const height = (h.cpu_percent / maxCpu) * 100;
+    const time = new Date(h.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `<div class="modal-chart-bar" style="height: ${height}%;" title="${h.cpu_percent.toFixed(1)}% @ ${time}"></div>`;
+  }).join('');
+  
+  container.innerHTML = bars;
+}
+
+// ─── Monitoring Profiles ───
+let profiles = [];
+let editingProfileId = null;
+
+async function loadProfiles() {
+  try {
+    const res = await fetch(`${API_BASE}/api/profiles`);
+    profiles = await res.json();
+    renderProfiles();
+  } catch (err) {
+    console.error('Profile load error:', err);
+    document.getElementById('profileList').innerHTML = 
+      `<div style="padding: 20px; color: var(--text-dim); text-align: center;">Failed to load profiles</div>`;
+  }
+}
+
+function renderProfiles() {
+  const container = document.getElementById('profileList');
+  if (!profiles.length) {
+    container.innerHTML = `<div style="padding: 20px; color: var(--text-dim); text-align: center;">No profiles yet. Click "+ New Profile" to create one.</div>`;
+    return;
+  }
+  
+  container.innerHTML = profiles.map(p => {
+    const processTags = p.processes.map(proc => 
+      `<span class="profile-process-tag">${proc.name}</span>`
+    ).join('');
+    
+    return `
+      <div class="profile-card" style="--profile-color: ${p.color}" onclick="viewProfile('${p.id}')">
+        <div class="profile-card-header">
+          <span class="profile-card-name">${p.name}</span>
+          <span class="profile-card-status">${p.processes.length} processes</span>
+        </div>
+        <div class="profile-card-processes">${processTags}</div>
+        <div class="profile-actions">
+          <button class="panel-btn" onclick="event.stopPropagation(); editProfile('${p.id}')">Edit</button>
+          <button class="panel-btn" onclick="event.stopPropagation(); deleteProfile('${p.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function showProfileModal(profileId = null) {
+  editingProfileId = profileId;
+  const profile = profileId ? profiles.find(p => p.id === profileId) : null;
+  
+  document.getElementById('profileModalTitle').textContent = profile ? 'Edit Profile' : 'New Profile';
+  document.getElementById('profileName').value = profile?.name || '';
+  document.getElementById('profileColor').value = profile?.color || '#3b82f6';
+  
+  const processesContainer = document.getElementById('profileProcesses');
+  processesContainer.innerHTML = '';
+  
+  if (profile?.processes?.length) {
+    profile.processes.forEach(proc => addProcessField(proc.name, proc.cpuThreshold, proc.memThreshold));
+  } else {
+    addProcessField();
+  }
+  
+  document.getElementById('profileModal').style.display = 'flex';
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModal').style.display = 'none';
+  editingProfileId = null;
+}
+
+function addProcessField(name = '', cpuThreshold = '', memThreshold = '') {
+  const container = document.getElementById('profileProcesses');
+  const div = document.createElement('div');
+  div.className = 'process-field';
+  div.innerHTML = `
+    <input type="text" placeholder="Process name" value="${name}" class="proc-name">
+    <input type="number" placeholder="CPU %" value="${cpuThreshold}" class="field-small proc-cpu" title="CPU threshold %">
+    <input type="number" placeholder="Mem MB" value="${memThreshold}" class="field-small proc-mem" title="Memory threshold MB">
+    <button onclick="this.parentElement.remove()">×</button>
+  `;
+  container.appendChild(div);
+}
+
+async function saveProfile() {
+  const name = document.getElementById('profileName').value.trim();
+  const color = document.getElementById('profileColor').value;
+  
+  if (!name) {
+    alert('Please enter a profile name');
+    return;
+  }
+  
+  const processFields = document.querySelectorAll('.process-field');
+  const processes = Array.from(processFields).map(field => ({
+    name: field.querySelector('.proc-name').value.trim(),
+    cpuThreshold: parseFloat(field.querySelector('.proc-cpu').value) || null,
+    memThreshold: parseFloat(field.querySelector('.proc-mem').value) || null,
+  })).filter(p => p.name);
+  
+  if (!processes.length) {
+    alert('Please add at least one process');
+    return;
+  }
+  
+  const profile = {
+    id: editingProfileId || 'profile_' + Date.now(),
+    name,
+    color,
+    processes,
+  };
+  
+  try {
+    const res = await fetch(`${API_BASE}/api/profiles`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    });
+    
+    if (res.ok) {
+      closeProfileModal();
+      loadProfiles();
+    } else {
+      alert('Failed to save profile');
+    }
+  } catch (err) {
+    console.error('Save profile error:', err);
+    alert('Failed to save profile: ' + err.message);
+  }
+}
+
+async function deleteProfile(id) {
+  if (!confirm('Delete this profile?')) return;
+  
+  try {
+    const res = await fetch(`${API_BASE}/api/profiles?id=${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      loadProfiles();
+    }
+  } catch (err) {
+    console.error('Delete profile error:', err);
+  }
+}
+
+function editProfile(id) {
+  showProfileModal(id);
+}
+
+function viewProfile(id) {
+  const profile = profiles.find(p => p.id === id);
+  if (!profile) return;
+  
+  // Filter process table to show only profile processes
+  const names = profile.processes.map(p => p.name.toLowerCase());
+  const filtered = currentProcesses.filter(p => 
+    names.some(n => p.name.toLowerCase().includes(n))
+  );
+  
+  if (filtered.length) {
+    currentProcesses = filtered;
+    renderProcesses();
+    // Add a "show all" button
+    setTimeout(() => {
+      const actions = document.querySelector('.panel-actions');
+      if (!actions.querySelector('.show-all-btn')) {
+        const btn = document.createElement('button');
+        btn.className = 'panel-btn show-all-btn';
+        btn.textContent = 'Show All';
+        btn.onclick = () => { fetchData(); };
+        actions.appendChild(btn);
+      }
+    }, 100);
+  }
+}
+
 // Initialize
 function init() {
   fetchData();
   loadHistory(60, document.querySelector('.panel-actions .panel-btn.active'));
   loadDrainEvents();
+  loadProfiles();
   
   refreshInterval = setInterval(() => {
     fetchData();

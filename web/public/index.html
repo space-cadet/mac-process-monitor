@@ -71,7 +71,7 @@
           <table class="process-table">
             <thead>
               <tr>
-                <th onclick="sortByColumn('name')" style="cursor: pointer;">Process</th>
+                <th onclick="sortByColumn('process')" style="cursor: pointer;">Process</th>
                 <th onclick="sortByColumn('pid')" style="cursor: pointer;">PID</th>
                 <th onclick="sortByColumn('cpu')" style="cursor: pointer;">CPU</th>
                 <th onclick="sortByColumn('memory')" style="cursor: pointer;">Memory</th>
@@ -130,11 +130,76 @@
       </div>
     </div>
 
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Monitoring Profiles</div>
+        <div class="panel-actions">
+          <button class="panel-btn" onclick="showProfileModal()">+ New Profile</button>
+        </div>
+      </div>
+      <div class="profile-list" id="profileList">
+        <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading profiles...</div>
+      </div>
+    </div>
+
     <footer>
       Mac Process Monitor v2.0 • SQLite time-series storage • Auto-refresh every 5s
     </footer>
   </div>
 
-  <script src="app.js"></script>
+  <!-- Process Detail Modal -->
+  <div class="modal-overlay" id="processModal" style="display: none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modalTitle">Process Detail</h3>
+        <button class="modal-close" onclick="closeProcessModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-stats" id="modalStats"></div>
+        <div class="modal-chart-wrapper">
+          <div class="modal-chart-title">CPU History (30 min)</div>
+          <div class="modal-chart" id="modalChart"></div>
+        </div>
+        <div class="modal-time-range">
+          <button class="panel-btn" onclick="loadProcessHistory(5)">5m</button>
+          <button class="panel-btn active" onclick="loadProcessHistory(30)">30m</button>
+          <button class="panel-btn" onclick="loadProcessHistory(60)">1h</button>
+          <button class="panel-btn" onclick="loadProcessHistory(360)">6h</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Edit Modal -->
+  <div class="modal-overlay" id="profileModal" style="display: none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="profileModalTitle">New Profile</h3>
+        <button class="modal-close" onclick="closeProfileModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Profile Name</label>
+          <input type="text" id="profileName" placeholder="e.g. Dev Work">
+        </div>
+        <div class="form-group">
+          <label>Color</label>
+          <input type="color" id="profileColor" value="#3b82f6">
+        </div>
+        <div class="form-group">
+          <label>Processes to Monitor</label>
+          <div id="profileProcesses"></div>
+          <button class="panel-btn" onclick="addProcessField()" style="margin-top: 8px;">+ Add Process</button>
+        </div>
+        <div class="modal-actions">
+          <button class="panel-btn primary" onclick="saveProfile()">Save Profile</button>
+          <button class="panel-btn" onclick="closeProfileModal()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>window.__inlineTest = 'works'; console.log('Inline script executed');</script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
