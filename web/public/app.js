@@ -79,26 +79,33 @@ function renderProcesses() {
     return b.memoryPercent - a.memoryPercent;
   }).slice(0, 10);
 
-  tbody.innerHTML = sorted.map(p => `
-    <tr>
-      <td>
-        <div class="process-name">
-          <div class="process-icon">◆</div>
-          <span>${p.name}</span>
-        </div>
-      </td>
-      <td>${p.pid}</td>
-      <td>
-        <div class="cpu-bar">
-          <span>${p.cpuPercent.toFixed(1)}%</span>
-          <div class="cpu-bar-track">
-            <div class="cpu-bar-fill ${p.cpuPercent > 50 ? 'high' : ''}" style="width: ${Math.min(p.cpuPercent, 100)}%;"></div>
+  tbody.innerHTML = sorted.map(p => {
+    const isCpuSort = currentSort === 'cpu';
+    const value = isCpuSort ? p.cpuPercent : p.memoryPercent;
+    const label = isCpuSort ? 'CPU' : 'Mem';
+    const barClass = value > 50 ? 'high' : '';
+    
+    return `
+      <tr>
+        <td>
+          <div class="process-name">
+            <div class="process-icon">◆</div>
+            <span>${p.name}</span>
           </div>
-        </div>
-      </td>
-      <td>${p.rssMB.toFixed(0)} MB</td>
-    </tr>
-  `).join('');
+        </td>
+        <td>${p.pid}</td>
+        <td>
+          <div class="cpu-bar">
+            <span>${value.toFixed(1)}%</span>
+            <div class="cpu-bar-track">
+              <div class="cpu-bar-fill ${barClass}" style="width: ${Math.min(value, 100)}%;"></div>
+            </div>
+          </div>
+        </td>
+        <td>${p.rssMB.toFixed(0)} MB</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function sortProcesses(by, clickedBtn) {

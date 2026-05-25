@@ -251,13 +251,8 @@ header {
     font-size: 12px;
   }
   
-  .process-table th:nth-child(2),
-  .process-table td:nth-child(2) {
-    display: none; /* Hide PID column on mobile */
-  }
-  
   .process-name span {
-    max-width: 120px;
+    max-width: 140px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -288,17 +283,6 @@ header {
   .panel-actions .panel-btn {
     padding: 4px 10px;
     font-size: 11px;
-  }
-}
-
-@media (max-width: 480px) {
-  .process-table th:nth-child(4),
-  .process-table td:nth-child(4) {
-    display: none; /* Hide Memory column on very small screens */
-  }
-  
-  .process-name span {
-    max-width: 100px;
   }
 }
 
@@ -367,6 +351,25 @@ header {
 .process-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 480px;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-wrapper::-webkit-scrollbar {
+  height: 4px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: var(--surface-raised);
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
 }
 
 .process-table th {
