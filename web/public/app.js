@@ -180,23 +180,47 @@ function renderChart(data) {
     return;
   }
 
-  // Limit to ~60 bars max for visibility
-  const step = Math.ceil(data.length / 60);
-  const sampled = step > 1 ? data.filter((_, i) => i % step === 0) : data;
+  // SVG line chart
+  const width = 800;
+  const height = 200;
+  const padding = { top: 10, right: 10, bottom: 10, left: 10 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
 
   const maxVal = 100;
-  const bars = sampled.map(d => {
-    const percent = d.battery_percent ?? d.batteryPercent ?? 0;
-    const height = (percent / maxVal) * 100;
-    const time = new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `
-      <div class="chart-bar" style="height: ${height}%;" data-value="${percent.toFixed(0)}% @ ${time}">
-      </div>
-    `;
-  }).join('');
+  const minVal = 0;
 
-  container.innerHTML = bars;
-  console.log(`[Chart] Rendered ${sampled.length} bars (sampled from ${data.length}), heights: ${sampled.slice(0,3).map(d => ((d.battery_percent ?? d.batteryPercent ?? 0) / 100 * 100).toFixed(0) + '%').join(', ')}...`);
+  // Create points
+  const points = data.map((d, i) => {
+    const percent = d.battery_percent ?? d.batteryPercent ?? 0;
+    const x = padding.left + (i / (data.length - 1)) * chartWidth;
+    const y = padding.top + chartHeight - ((percent - minVal) / (maxVal - minVal)) * chartHeight;
+    return { x, y, percent, timestamp: d.timestamp };
+  });
+
+  // Build path
+  const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+
+  // Area path (for gradient fill)
+  const areaD = `${pathD} L ${points[points.length - 1].x.toFixed(1)} ${padding.top + chartHeight} L ${points[0].x.toFixed(1)} ${padding.top + chartHeight} Z`;
+
+  const svg = `
+    <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" style="width: 100%; height: 100%;">
+      <defs>
+        <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--accent-battery)" stop-opacity="0.3"/>
+          <stop offset="100%" stop-color="var(--accent-battery)" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="${areaD}" fill="url(#areaGradient)" stroke="none"/>
+      <path d="${pathD}" fill="none" stroke="var(--accent-battery)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      ${points.map((p, i) => i % Math.ceil(points.length / 20) === 0 ? 
+        `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="var(--accent-battery)" stroke="var(--surface)" stroke-width="1"/>
+        <title>${p.percent}% @ ${new Date(p.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</title>` : '').join('')}
+    </svg>
+  `;
+
+  container.innerHTML = svg;
 
   // X-axis labels: show first, middle, last timestamps
   if (xAxis) {
