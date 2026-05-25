@@ -14,11 +14,11 @@ Real-time web dashboard for monitoring macOS system metrics. Serves from a light
 ┌─────────────────────────────────────────┐
 │           Browser (any device)            │
 │  ┌─────────────────────────────────────┐ │
-│  │  index.html + app.js + styles.css   │ │
+│  │  index.html + app.js + styles.css │ │
 │  │  • Auto-refresh every 5s            │ │
 │  │  • KPI cards (battery, CPU, mem)    │ │
-│  │  • Process table (sortable)         │ │
-│  │  • Battery history chart            │ │
+│  │  • Process table (sortable columns) │ │
+│  │  • Battery history line chart       │ │
 │  │  • Drain events + CSV export        │ │
 │  └─────────────────────────────────────┘ │
 └─────────────────────────────────────────┘
@@ -79,7 +79,7 @@ No framework — plain JS with module-level variables:
 
 ```javascript
 let currentProcesses = [];  // Last fetched process list
-let currentSort = 'cpu';    // 'cpu' | 'mem'
+let currentSort = { column: 'cpu', direction: 'desc' };  // Sort state
 let refreshInterval = null; // 5s auto-refresh timer
 ```
 
@@ -104,64 +104,81 @@ Every 5s: fetchData() + loadDrainEvents()
 
 ### Chart Implementation
 
-**CSS-only bar chart** — no Chart.js or D3 dependency.
+**SVG Line Chart** — No Chart.js or D3 dependency.
 
-**Structure**:
-```html
-<div class="chart-wrapper">
-  <div class="chart-y-axis">     <!-- 100%, 75%, 50%, 25%, 0% -->
-  <div class="chart-area">
-    <div class="chart-gridlines"> <!-- 5 horizontal lines -->
-    <div class="chart-container"> <!-- Bars -->
-      <div class="chart-bar" style="height: 38%;" data-value="38% @ 00:51">
-      </div>
-    </div>
-  </div>
-</div>
-<div class="chart-x-axis">       <!-- Time labels -->
+**Features**:
+- Smooth line connecting data points
+- Gradient area fill under the line
+- Data points shown as circles (sampled to ~20 points)
+- Hover tooltips showing exact battery % and time
+- Responsive SVG with `preserveAspectRatio="none"`
+
+**Code**:
+```javascript
+function renderChart(data) {
+  const points = data.map((d, i) => {
+    const percent = d.battery_percent ?? d.batteryPercent ?? 0;
+    const x = padding.left + (i / (data.length - 1)) * chartWidth;
+    const y = padding.top + chartHeight - ((percent / 100)) * chartHeight;
+    return { x, y, percent };
+  });
+
+  const pathD = points.map((p, i) => 
+    `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`
+  ).join(' ');
+
+  // SVG with gradient fill and line stroke
+}
 ```
-
-**Key features**:
-- Y-axis labels: percentage (0–100%)
-- X-axis labels: first, middle, last timestamps
-- Gridlines: faint horizontal reference lines
-- Hover tooltip: `data-value` attribute shows exact % + time
-- Bars: `flex: 1` for equal width, `height: ${percent}%` for value
-
-**Responsive**: Bars scale with container, labels stay readable.
 
 ### Process Table
 
 | Column | Sortable | Display |
 |--------|----------|---------|
-| Process | No | Name + icon |
-| PID | No | Process ID |
+| Process | **Yes** | Name + icon (truncated with ellipsis on mobile) |
+| PID | **Yes** | Process ID |
 | CPU | **Yes** (▼ default) | Percentage + visual bar |
-| Memory | **Yes** | MB value |
+| Memory | **Yes** | **MB value** + visual bar |
+
+**Clickable Headers**: Click any column header to sort by that column. Click again to reverse order (asc/desc). Visual indicator shows ▼ (desc) or ▲ (asc).
 
 **CPU bar**: 
 - Track: 60px wide, 4px tall, dark background
 - Fill: colored bar, width = percentage
 - Color: default blue, `high` class = red if > 50%
 
+**Memory bar**:
+- Shows actual **MB consumed** (e.g., "404 MB") not percentage
+- Visual bar still uses `memoryPercent` for relative scale
+- More actionable than abstract percentage
+
 ### Sorting
 
 ```javascript
-function sortProcesses(by, clickedBtn) {
-  currentSort = by;  // 'cpu' or 'mem'
+function sortByColumn(column) {
+  if (currentSort.column === column) {
+    currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSort.column = column;
+    currentSort.direction = 'desc';
+  }
   renderProcesses();
-  // Update button active state
 }
 
 function renderProcesses() {
   const sorted = [...currentProcesses].sort((a, b) => {
-    if (currentSort === 'cpu') return b.cpuPercent - a.cpuPercent;
-    return b.memoryPercent - a.memoryPercent;  // Note: mem sort uses memoryPercent, not rssMB
+    let valA, valB;
+    switch (currentSort.column) {
+      case 'name': valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); break;
+      case 'pid': valA = a.pid; valB = b.pid; break;
+      case 'cpu': valA = a.cpuPercent; valB = b.cpuPercent; break;
+      case 'memory': valA = a.memoryPercent; valB = b.memoryPercent; break;
+    }
+    if (currentSort.direction === 'asc') return valA > valB ? 1 : -1;
+    return valA < valB ? 1 : -1;
   }).slice(0, 10);
 }
 ```
-
-**Note**: Memory sort button exists but sorts by `memoryPercent` (percentage of total RAM), not `rssMB` (absolute MB). This is a known limitation — T4 Phase 2 will add proper MB sorting.
 
 ## Styling (`web/public/styles.css`)
 
@@ -197,8 +214,19 @@ function renderProcesses() {
 @media (max-width: 768px) {
   .main-grid { grid-template-columns: 1fr; }  /* Stack panels */
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }  /* 2×2 KPIs */
+  
+  /* Process table: horizontal scroll, reduced padding */
+  .process-table th, .process-table td { padding: 8px 12px; font-size: 12px; }
+  .process-name span { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
 }
 ```
+
+**Mobile Optimizations**:
+- Table wrapped in `.table-wrapper` with `overflow-x: auto`
+- All 4 columns visible via horizontal scroll (no column hiding)
+- Process names truncate with ellipsis if too long
+- Reduced padding and font sizes
+- Smaller CPU/memory bar tracks
 
 ## Data Format Handling
 
@@ -220,13 +248,43 @@ processes.map(p => ({
 
 **Rule**: Frontend should always use `??` fallback for API fields that may change casing.
 
+## Deployment
+
+### Persistent Service (launchd)
+
+Dashboard runs as a macOS LaunchAgent for continuous operation:
+
+```xml
+<!-- ~/Library/LaunchAgents/com.deepak.mac-process-monitor.dashboard.plist -->
+<key>Label</key>
+<string>com.deepak.mac-process-monitor.dashboard</string>
+<key>RunAtLoad</key>
+<true/>
+<key>KeepAlive</key>
+<dict>
+  <key>SuccessfulExit</key>
+  <false/>
+</dict>
+```
+
+**Management**:
+```bash
+# Check status
+launchctl list | grep mac-process-monitor
+
+# Stop
+launchctl unload ~/Library/LaunchAgents/com.deepak.mac-process-monitor.dashboard.plist
+
+# Start
+launchctl load ~/Library/LaunchAgents/com.deepak.mac-process-monitor.dashboard.plist
+```
+
 ## Known Limitations
 
-1. **Memory sort**: Button exists but sorts by `memoryPercent` (%) not `rssMB` (absolute MB)
-2. **CPU history**: No chart yet — only battery history exists
-3. **No auth**: Dashboard is open on local network (acceptable for home use)
-4. **No WebSocket**: Polling every 5s (simple but not real-time)
-5. **Chart bars**: CSS-only, limited to ~50 bars before crowding
+1. **CPU history**: No chart yet — only battery history exists
+2. **No auth**: Dashboard is open on local network (acceptable for home use)
+3. **No WebSocket**: Polling every 5s (simple but not real-time)
+4. **Sampling**: Battery chart samples to ~60 points max for visibility
 
 ## Testing
 
@@ -236,13 +294,15 @@ processes.map(p => ({
 - [ ] Accessible from phone on `http://192.168.1.x:3456`
 - [ ] KPI cards show live data (battery %, CPU %, memory GB)
 - [ ] Process table shows top 10 by CPU
-- [ ] Click "Mem ▲" sorts by memory
-- [ ] Battery chart shows bars with Y-axis % labels
-- [ ] X-axis shows time labels
-- [ ] Hover over bar shows tooltip
+- [ ] Click "Memory" header sorts by memory
+- [ ] Click "Memory" again reverses sort order
+- [ ] Battery chart shows smooth line graph
+- [ ] Hover over data points shows tooltip
 - [ ] Auto-refresh updates every 5s (check timestamp)
 - [ ] Drain events panel shows "No drain events" (or real events)
 - [ ] Export CSV button works (when events exist)
+- [ ] Table scrolls horizontally on mobile
+- [ ] Process names truncate with ellipsis on narrow screens
 
 ### Debug
 
@@ -261,6 +321,7 @@ fetch('/api/drain-events').then(r => r.json()).then(console.log)
 | `web/public/index.html` | Dashboard markup | ~123 |
 | `web/public/app.js` | Frontend logic | ~234 |
 | `web/public/styles.css` | Dark theme styling | ~512 |
+| `com.deepak.mac-process-monitor.dashboard.plist` | launchd service config | ~35 |
 
 ---
 
