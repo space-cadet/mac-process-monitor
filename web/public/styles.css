@@ -19,6 +19,48 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
+/* Chart tabs */
+.chart-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.chart-tab {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.chart-tab:hover {
+  color: var(--text);
+  border-color: rgba(255,255,255,0.15);
+}
+
+.chart-tab.active {
+  background: var(--accent-battery-dim);
+  color: var(--accent-battery);
+  border-color: rgba(34,211,238,0.3);
+}
+
+.chart-tab[data-tab="cpu"].active {
+  background: var(--accent-cpu-dim);
+  color: var(--accent-cpu);
+  border-color: rgba(245,158,11,0.3);
+}
+
+.chart-tab[data-tab="memory"].active {
+  background: var(--accent-mem-dim);
+  color: var(--accent-mem);
+  border-color: rgba(167,139,250,0.3);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
@@ -86,6 +128,40 @@ header {
   font-size: 13px;
   color: var(--text-dim);
   font-weight: 400;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.uptime-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.db-size-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
 }
 
 .live-badge {
@@ -533,6 +609,57 @@ header {
 }
 
 .chart-bar:hover {
+  opacity: 1;
+}
+
+/* SVG Line Chart */
+.chart-svg {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
+}
+
+.chart-line {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: stroke 0.3s;
+}
+
+.chart-area-fill {
+  transition: fill 0.3s;
+}
+
+.chart-point {
+  cursor: pointer;
+  transition: r 0.2s;
+  opacity: 0.9;
+}
+
+.chart-point:hover {
+  r: 1.8;
+  opacity: 1;
+}
+
+.chart-tooltip {
+  position: absolute;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text);
+  pointer-events: none;
+  z-index: 10;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.chart-tooltip.visible {
   opacity: 1;
 }
 

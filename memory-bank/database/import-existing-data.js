@@ -9,10 +9,10 @@ import Database from 'better-sqlite3';
 import { readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 
-const dbPath = join(process.cwd(), 'memory_bank.db');
+const dbPath = join(process.cwd(), 'memory-bank', 'database', 'memory_bank.db');
 const db = new Database(dbPath);
 
-const mbDir = join(process.cwd(), '..');
+const mbDir = join(process.cwd(), 'memory-bank');
 
 console.log('\n🔄 Importing existing memory bank data...\n');
 

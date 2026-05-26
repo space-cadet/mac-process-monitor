@@ -16,10 +16,10 @@ export class SystemCollector {
     return {
       timestamp: Date.now(),
       percent: battery.percent,
-      isCharging: battery.ischarging,
-      isPlugged: battery.acconnected,
-      timeRemaining: battery.timeremaining >= 0 ? battery.timeremaining : null,
-      cycleCount: battery.cyclecount >= 0 ? battery.cyclecount : null,
+      isCharging: battery.isCharging,
+      isPlugged: battery.acConnected,
+      timeRemaining: battery.timeRemaining >= 0 ? battery.timeRemaining : null,
+      cycleCount: battery.cycleCount >= 0 ? battery.cycleCount : null,
       temperature: battery.temperature >= 0 ? battery.temperature : null,
     };
   }

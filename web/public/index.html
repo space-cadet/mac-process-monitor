@@ -17,9 +17,13 @@
           <span>Real-time battery & process tracking</span>
         </div>
       </div>
-      <div class="live-badge">
-        <div class="live-dot" id="liveDot"></div>
-        <span id="liveText">Live • Connecting...</span>
+      <div class="header-actions">
+        <div class="uptime-badge" id="uptimeBadge" title="Server uptime">⏱ --</div>
+        <div class="db-size-badge" id="dbSizeBadge" title="Database size">🗄 --</div>
+        <div class="live-badge">
+          <div class="live-dot" id="liveDot"></div>
+          <span id="liveText">Live • Connecting...</span>
+        </div>
       </div>
     </header>
 
@@ -66,6 +70,7 @@
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Top Processes</div>
+          <div class="panel-actions" id="processPanelActions"></div>
         </div>
         <div class="table-wrapper">
           <table class="process-table">
@@ -86,7 +91,11 @@
 
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title" style="--panel-accent: var(--accent-battery);">Battery History</div>
+          <div class="chart-tabs">
+            <button class="chart-tab active" data-tab="battery" onclick="switchChartTab('battery')">Battery</button>
+            <button class="chart-tab" data-tab="cpu" onclick="switchChartTab('cpu')">CPU</button>
+            <button class="chart-tab" data-tab="memory" onclick="switchChartTab('memory')">Memory</button>
+          </div>
           <div class="panel-actions">
             <button class="panel-btn active" onclick="loadHistory(60, this)">1h</button>
             <button class="panel-btn" onclick="loadHistory(360, this)">6h</button>
@@ -94,7 +103,7 @@
           </div>
         </div>
         <div class="chart-wrapper">
-          <div class="chart-y-axis">
+          <div class="chart-y-axis" id="chartYAxis">
             <span>100%</span>
             <span>75%</span>
             <span>50%</span>
@@ -109,12 +118,20 @@
               <div class="gridline"></div>
               <div class="gridline"></div>
             </div>
-            <div class="chart-container" id="batteryChart">
-              <div style="color: var(--text-dim); font-size: 13px;">Loading chart...</div>
-            </div>
+            <svg class="chart-svg" id="historyChart" viewBox="0 0 100 100" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--accent-battery)" stop-opacity="0.3"/>
+                  <stop offset="100%" stop-color="var(--accent-battery)" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path class="chart-area-fill" id="chartAreaFill" d="" fill="url(#lineGradient)"/>
+              <path class="chart-line" id="chartLine" d="" fill="none" stroke="var(--accent-battery)" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
+              <g id="chartPoints"></g>
+            </svg>
           </div>
         </div>
-        <div class="chart-x-axis" id="batteryXAxis"></div>
+        <div class="chart-x-axis" id="chartXAxis"></div>
       </div>
     </div>
 

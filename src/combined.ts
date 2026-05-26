@@ -1,5 +1,6 @@
-import { TimeSeriesDB } from '../storage/TimeSeriesDB.js';
-import { SystemCollector } from '../core/SystemCollector.js';
+import { Monitor } from './core/Monitor.js';
+import { TimeSeriesDB } from './storage/TimeSeriesDB.js';
+import { SystemCollector } from './core/SystemCollector.js';
 import { createServer } from 'http';
 import { readFileSync, existsSync, statSync } from 'fs';
 import { dirname, join } from 'path';
@@ -7,12 +8,28 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Resolve DB path to canonical location (same as monitor)
+// ─── Shared Resources ───
 const dbPath = join(process.env.HOME || '', '.procmon', 'monitor.db');
 const db = new TimeSeriesDB(dbPath);
 const collector = new SystemCollector();
 
-// MIME types
+// ─── Monitor ───
+const monitor = new Monitor({
+  sampleIntervalSeconds: 30,
+  dbPath,
+  retentionDays: 30,
+  alert: {
+    enabled: true,
+    drainThreshold: 1.0,
+    minDuration: 2,
+    cooldownMinutes: 10,
+  },
+});
+
+// ─── Server Start Time ───
+const serverStartTime = Date.now();
+
+// ─── MIME Types ───
 const mimeTypes: Record<string, string> = {
   '.html': 'text/html',
   '.js': 'application/javascript',
@@ -22,11 +39,11 @@ const mimeTypes: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
+// ─── HTTP Server ───
 const server = createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -40,7 +57,6 @@ const server = createServer(async (req, res) => {
   // API routes
   if (pathname === '/api/snapshot') {
     try {
-      // Always use live collection for current snapshot
       const snapshot = await collector.getSystemSnapshot();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(snapshot));
@@ -131,6 +147,41 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/profiles') {
+    try {
+      if (req.method === 'GET') {
+        const profiles = db.getProfiles?.() || [];
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(profiles));
+      } else if (req.method === 'POST') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+          try {
+            const profile = JSON.parse(body);
+            db.saveProfile?.(profile);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
+          } catch (e) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          }
+        });
+        return;
+      } else if (req.method === 'DELETE') {
+        const id = url.searchParams.get('id');
+        if (id) db.deleteProfile?.(id);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+        return;
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
   if (pathname === '/api/db-size') {
     try {
       const stats = statSync(dbPath);
@@ -170,44 +221,9 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/api/profiles') {
-    try {
-      if (req.method === 'GET') {
-        const profiles = db.getProfiles?.() || [];
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(profiles));
-      } else if (req.method === 'POST') {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', () => {
-          try {
-            const profile = JSON.parse(body);
-            db.saveProfile?.(profile);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true }));
-          } catch (e) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Invalid JSON' }));
-          }
-        });
-        return;
-      } else if (req.method === 'DELETE') {
-        const id = url.searchParams.get('id');
-        if (id) db.deleteProfile?.(id);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
-        return;
-      }
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: (err as Error).message }));
-    }
-    return;
-  }
-
   // Static files
   let filePath = pathname === '/' ? '/index.html' : pathname;
-  const fullPath = join(__dirname, '../../web/public', filePath);
+  const fullPath = join(__dirname, '../web/public', filePath);
 
   if (existsSync(fullPath)) {
     const ext = fullPath.slice(fullPath.lastIndexOf('.'));
@@ -223,19 +239,36 @@ const server = createServer(async (req, res) => {
 
 const PORT = process.env.PORT || 3456;
 const HOST = '0.0.0.0';
-const serverStartTime = Date.now();
 
-server.listen(PORT, HOST, () => {
-  console.log(`[Dashboard] Server running on http://${HOST}:${PORT}`);
-  console.log(`[Dashboard] API endpoints:`);
-  console.log(`  GET http://<your-ip>:${PORT}/api/snapshot`);
-  console.log(`  GET http://<your-ip>:${PORT}/api/history?minutes=60`);
-  console.log(`  GET http://<your-ip>:${PORT}/api/drain-events`);
-});
+// ─── Start Everything ───
+async function start() {
+  await monitor.start();
 
-// Graceful shutdown
+  server.listen(PORT, HOST, () => {
+    console.log(`[Dashboard] Server running on http://${HOST}:${PORT}`);
+    console.log(`[Dashboard] API endpoints:`);
+    console.log(`  GET http://<your-ip>:${PORT}/api/snapshot`);
+    console.log(`  GET http://<your-ip>:${PORT}/api/history?minutes=60`);
+    console.log(`  GET http://<your-ip>:${PORT}/api/drain-events`);
+  });
+}
+
+// ─── Graceful Shutdown ───
 process.on('SIGINT', () => {
-  console.log('\n[Dashboard] Shutting down...');
+  console.log('\n[Combined] SIGINT received, shutting down...');
+  monitor.stop();
   db.close();
   server.close(() => process.exit(0));
+});
+
+process.on('SIGTERM', () => {
+  console.log('\n[Combined] SIGTERM received, shutting down...');
+  monitor.stop();
+  db.close();
+  server.close(() => process.exit(0));
+});
+
+start().catch((err) => {
+  console.error('[Combined] Fatal error:', err);
+  process.exit(1);
 });

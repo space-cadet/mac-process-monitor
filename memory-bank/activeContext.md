@@ -1,21 +1,26 @@
 # Active Context
 
-*Last Updated: 2026-05-25 00:52 IST*
+*Last Updated: 2026-05-26 13:19 IST*
 
 ## Current Tasks
+
 1. **[T4]**: Web Dashboard for Live Monitoring (MEDIUM priority)
    - Status: 🔄 IN PROGRESS
-   - Output: Dashboard server running on port 3456, accessible from local network + Android
-   - Fixes: Chart JS bugs fixed, memory display fixed, live data working
-   - Files: `src/web/server.ts`, `web/public/index.html`, `web/public/app.js`, `web/public/styles.css`
+   - Output: `src/combined.ts` runs monitor + dashboard in single process
+   - Server on port 3456, DB actively recording (2,976 snapshots, 148,800 process samples)
+   - Chart tabs (Battery/CPU/Memory) all plotting live SVG line charts
+   - DB size badge (`🗄`) and uptime badge (`⏱`) in header
+   - Profile filtering with persistent sort state
+   - Files: `src/combined.ts`, `src/web/server.ts`, `web/public/app.js`, `web/public/index.html`, `web/public/styles.css`
 
 2. **[T2]**: Telegram/OpenClaw Alert Integration (HIGH priority)
    - Status: ⬜ PENDING
-   - Next: Add sendAlert() to Monitor.ts, format drain event messages
+   - Next: Wire `sendAlert()` in Monitor.ts to dispatch messages via Telegram bot or OpenClaw
 
 3. **[T3]**: Per-Process History Query Interface (MEDIUM priority)
    - Status: ⬜ PENDING
-   - Next: Add process-centric DB queries, build CLI tool
+   - Next: Build CLI tool (`npx tsx src/query.ts --process Chrome --since 2h`)
+   - Note: `combined.ts` already has `/api/process-history` and `/api/process-stats` endpoints
 
 4. **[T5]**: Swift Menubar App (LOW priority)
    - Status: ⬜ PENDING
@@ -25,14 +30,12 @@
 - T1: TypeScript rewrite — battery, process tracking, drain detection, SQLite storage (2026-05-18)
 
 ## Next Steps
-- T4: Dashboard polish — add CPU history chart, process memory sorting
-- T2: Telegram alerting — integrate OpenClaw message tool
-- T3: Process queries — `npx tsx src/query.ts --process Chrome --since 2h`
+- T2: Telegram alerting — integrate OpenClaw message tool or node-telegram-bot-api
+- T3: Process queries — CLI tool for per-process history analysis
 - T5: Swift menubar — native macOS app (future)
 
 ## System Status
-- **Battery**: 39%, not charging
-- **Memory**: 99.1% used (8GB machine)
-- **DB**: ~/.procmon/monitor.db with snapshots + process samples
-- **Dashboard**: Running on http://192.168.1.103:3456 (live data)
-- **Monitor**: Running (PID 79284), sampling every 30s
+- **Battery**: Monitoring via `systeminformation`
+- **DB**: `~/.procmon/monitor.db` with snapshots + process samples
+- **Dashboard**: Running on http://localhost:3456 (via `npx tsx src/combined.ts`)
+- **Monitor**: Running within `combined.ts`, sampling every 30s

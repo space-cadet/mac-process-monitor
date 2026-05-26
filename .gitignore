@@ -1,3 +1,6 @@
+# Playwright
+.playwright-mcp/
+
 # Python
 __pycache__/
 *.py[cod]

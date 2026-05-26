@@ -26,12 +26,14 @@ The monitor follows a pipeline architecture where each stage is independent and 
                            │   DashboardServer   │
                            │   (port 3456)       │
                            │   Native Node http  │
+                           │   src/combined.ts   │
                            └─────────────────────┘
                                      │
                                      ▼
                            ┌─────────────────────┐
-                           │  Chart.js + HTML    │
-                           │  (public/index.html)│
+                           │  Vanilla JS + HTML  │
+                           │  (web/public/)      │
+                           │  SVG line charts    │
                            └─────────────────────┘
 ```
 
@@ -63,16 +65,23 @@ The monitor follows a pipeline architecture where each stage is independent and 
 - `insertDrainEvent()`: stores event + serialized top processes JSON
 - `cleanupOldSamples()`: deletes snapshots older than retention days (cascade via FK)
 
-### DashboardServer (`src/dashboard/server.ts`)
+### DashboardServer (`src/combined.ts` or `src/web/server.ts`)
 - Native Node.js `http` server — no Express dependency
-- Serves static files from `public/` (index.html, app.js, style.css)
-- Four JSON API endpoints query `TimeSeriesDB` directly:
-  - `/api/snapshots?minutes=N` — recent system snapshots
-  - `/api/processes?limit=N` — top processes from latest snapshot
+- Two deployment modes:
+  - **Unified** (`src/combined.ts`): Monitor + server in one process, shared DB
+  - **Standalone** (`src/web/server.ts`): Server only, queries existing DB
+- Serves static files from `web/public/` (index.html, app.js, styles.css)
+- Nine JSON API endpoints:
+  - `/api/snapshot` — live system snapshot
+  - `/api/history?minutes=N` — time-series history
   - `/api/drain-events` — all drain events
-  - `/api/stats` — DB snapshot/event counts
+  - `/api/process-history?name=X&minutes=N` — per-process history
+  - `/api/process-stats?name=X&minutes=N` — process statistics
+  - `/api/top-processes?metric=cpu&limit=N` — top processes
+  - `/api/profiles` — process profile management
+  - `/api/db-size` — SQLite DB size
+  - `/api/server-info` — server uptime and metadata
 - WAL mode enables concurrent reads without blocking the monitor writer
-- Standalone entry point (`src/dashboard.ts`) — runs independently of monitor
 - Port 3456, no auth (local-only)
 
 ### Monitor (`src/core/Monitor.ts`)
