@@ -1,6 +1,6 @@
 # Implementation Details: Core Monitoring Pipeline
 
-*Last Updated: 2026-05-26 13:19 IST*
+*Last Updated: 2026-05-19 14:42 IST*
 
 ## Table of Contents
 1. [SystemCollector Design](#systemcollector-design)
@@ -252,25 +252,6 @@ Without this convention, the code fails under pure Node.js ESM (no tsx).
 ---
 
 ## Known Quirks
-
-### Battery Property Casing
-
-`systeminformation` v5 returns battery fields in camelCase:
-- `isCharging` (not `ischarging`)
-- `acConnected` (not `acconnected`)
-- `timeRemaining` (not `timeremaining`)
-- `cycleCount` (not `cyclecount`)
-
-These were incorrectly read as lowercase in early versions. Fixed in `SystemCollector.ts`:
-
-```typescript
-return {
-  isCharging: battery.isCharging,
-  isPlugged: battery.acConnected,
-  timeRemaining: battery.timeRemaining >= 0 ? battery.timeRemaining : null,
-  cycleCount: battery.cycleCount >= 0 ? battery.cycleCount : null,
-};
-```
 
 ### `currentLoad` Casing
 `systeminformation` v5 returns `currentLoad` and `avgLoad` (camelCase). Earlier versions or certain platforms may differ. The code uses:

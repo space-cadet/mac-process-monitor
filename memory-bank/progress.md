@@ -1,51 +1,64 @@
 # Progress Report: mac-process-monitor
 
-*Last Updated: 2026-05-26 13:19 IST*
+*Last Updated: 2026-06-10 01:15 IST*
 
-## Project Status: T1 Complete, T4 Nearly Complete, T2-T3-T5 Pending
+## Project Status: T1, T3, T4, T6, T7 Complete; T2, T5 Pending
 
 ### What Works
+
 - **T1 — TypeScript Core Monitor**: ✅ COMPLETE
   - `SystemCollector.ts`: Battery + process + expanded metric sampling via `systeminformation`
-  - `DrainAnalyzer.ts`: Sliding 5-min window drain detection with process correlation
-  - `TimeSeriesDB.ts`: SQLite storage with WAL + auto-migration
+  - `DrainAnalyzer.ts`: Sliding window drain detection with process correlation
+  - `TimeSeriesDB.ts`: SQLite storage with WAL + auto-migration (6 tables)
   - `Monitor.ts`: Orchestrator loop with configurable intervals and thresholds
   - `main.ts`: Entry point with graceful SIGINT/SIGTERM shutdown
   - Test scripts: `test-basic.ts`, `test-collector.ts`, `test-analyzer.ts`, `show-data.ts`
-  - Memory Bank: Full task registry, product context, tech context, edit history
 
-- **T4 — Web Dashboard**: 🔄 NEARLY COMPLETE
-  - `src/combined.ts`: Unified monitor + dashboard in single process (recommended)
-  - `src/web/server.ts`: Standalone dashboard HTTP server
-  - `web/public/`: HTML + vanilla JS + CSS dark theme
-  - 9 API endpoints: snapshot, history, drain-events, process-history, process-stats, top-processes, profiles, db-size, server-info
-  - Chart tabs: Battery/CPU/Memory SVG line charts with gradient fill
-  - DB size badge (`🗄`) and uptime badge (`⏱`)
-  - Profile filtering with persistent sort state
-  - Auto-refresh every 5 seconds
-  - Mobile-responsive process table with horizontal scroll
+- **T3 — Per-Process Query Interface**: ✅ COMPLETE
+  - `src/query.ts`: CLI tool with `--spikes`, `--battery`, `--top`, `--process`, `--stats`
+  - `TimeSeriesDB.ts`: Query methods for history, stats, top processes, spikes, battery impact
+  - All queries exposed via dashboard API endpoints
 
-### What's In Progress
-- T4: Dashboard polish — potential minor UI refinements
+- **T4 — Web Dashboard**: ✅ COMPLETE (rebuilt 2026-06-10)
+  - `src/dashboard/server.ts`: Native Node.js HTTP server, 12 API endpoints
+  - `dashboard/public/`: 7-file modular frontend (HTML, CSS, utils, charts, tables, profiles, app)
+  - Features: side-by-side layout, sortable columns, process detail modal, spike panel, battery impact panel, profile CRUD
+  - Auto-refresh every 5 seconds, responsive design
+  - Playwright E2E tests
+
+- **T6 — Process Spike Detection**: ✅ COMPLETE
+  - `src/core/SpikeDetector.ts`: Per-process baseline tracking, dual-threshold detection
+  - `process_spikes` table: Stores spike events with baseline, threshold, snapshot reference
+  - Dashboard: Real-time spike alert panel with clickable cards
+  - CLI: `npx tsx src/query.ts --spikes --since 1h`
+
+- **T7 — Battery Impact Correlation**: ✅ COMPLETE
+  - `src/core/BatteryImpactAnalyzer.ts`: Drain period detection, per-process impact scoring
+  - `battery_impact` + `battery_impact_events` tables: Accumulated scores + event history
+  - Dashboard: Battery impact ranking bars with clickable process links
+  - CLI: `npx tsx src/query.ts --battery --limit 10`
 
 ### What's Left to Build
+
 | Task | Status | Description |
 |------|--------|-------------|
-| T2 | ⬜ | Telegram/OpenClaw alert integration (HIGH priority) |
-| T3 | ⬜ | Per-process history query interface (CLI tool) |
+| T2 | ⬜ | Telegram/OpenClaw alert integration |
 | T5 | ⬜ | Swift menubar app (future) |
 
-## Technical Debt
-- `techContext.md` was stale (described old Python stack) — **FIXED** 2026-05-19
-- `productContext.md` was generic — **FIXED** 2026-05-19 to describe battery drain use case
+### Technical Debt (Resolved)
 
-## Known Issues
-- `sendAlert()` in `Monitor.ts` is a stub — prints to console, doesn't actually send messages (T2 will fix)
+- ~~`techContext.md` was stale~~ — **FIXED** 2026-05-19
+- ~~`productContext.md` was generic~~ — **FIXED** 2026-05-19
+- ~~Dashboard frontend regression~~ — **FIXED** 2026-06-10 (advanced features restored)
+- ~~Process modal `[object Object]` bug~~ — **FIXED** 2026-06-10 (click handler passed object instead of name)
+
+### Known Issues
+
+- `sendAlert()` in `Monitor.ts` is still a stub — prints to console, doesn't actually send messages (T2 pending)
 - No formal test framework (Jest configured but no test files written)
-- `.js` import paths in source are ESM convention but look odd
-- Previous LaunchAgent crashed 4,427 times — removed, manual start recommended
+- Battery impact data needs longer runtime on battery power (currently 0 events — needs 2% drop over 2+ min while not charging)
 
-## Timeline
+### Timeline
 
 | Date | Milestone | Status |
 |------|-----------|--------|
@@ -53,20 +66,26 @@
 | 2026-05-18 | Memory bank initialized, T2-T5 planned | ✅ Complete |
 | 2026-05-19 | Memory bank updated to reflect actual TS stack | ✅ Complete |
 | 2026-05-19 | T4: Web dashboard on port 3456 with Chart.js | ✅ Complete |
-| 2026-05-26 | T4: Unified process, chart tabs, badges, profile filtering | 🔄 Complete |
+| 2026-06-09 | T6: Process spike detection with baseline tracking | ✅ Complete |
+| 2026-06-09 | T7: Battery impact correlation with scoring | ✅ Complete |
+| 2026-06-10 | T4: Dashboard rebuilt with full features + T3 queries | ✅ Complete |
 | *Next* | T2: OpenClaw/Telegram alerting | ⬜ Pending |
-| *Next* | T3: CLI query tool (`--process Chrome --since 2h`) | ⬜ Pending |
 | *Future* | T5: Swift menubar | ⬜ Pending |
 
-## Current Blockers
+### Current Blockers
+
 - None
 
-## Next Milestone Goals
-- Wire `Monitor.sendAlert()` to actually dispatch messages (T2)
-- Build `src/query.ts` CLI for per-process history (T3)
-- Port core logic to Swift menubar app (T5)
+### Next Milestone Goals
 
-## Notes
-- Project was rewritten from Python to TypeScript during T1
+- Wire `Monitor.sendAlert()` to actually dispatch messages via OpenClaw message tool (T2)
+- Restart monitor core for continuous sampling (stopped after test run)
+- Capture dashboard screenshots for README
+
+### Notes
+
+- Project rewritten from Python to TypeScript during T1
 - Original `procmon/` Python package is vestigial (not imported by TS code)
 - `requirements.txt` and `procmon/` can be removed once TS stack is fully validated
+- Memory bank uses BOTH workflows: DB-native (`database/`) + text-based (`tasks.md`, `T*.md`, etc.)
+- GitHub repo made public: https://github.com/space-cadet/mac-process-monitor

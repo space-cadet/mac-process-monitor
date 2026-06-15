@@ -1,48 +1,41 @@
-# Session Cache
+# Session: 2026-06-13 02:34 IST
 
-*Created: 2026-05-25 05:05:17 IST*
-*Last Updated: 2026-05-26 13:19 IST*
+## Session Summary
+- **User**: Deepak (D V)
+- **Topic**: mac-process-monitor LaunchDaemon installation
+- **Outcome**: Task T8 created — pending manual sudo execution
 
-**Started**: 2026-05-26 01:30 IST
-**Focus Task**: T4: Web Dashboard for Live Monitoring
-**Session File**: `sessions/2026-05-26.md`
-**Status**: 🔄 Active: 1, Paused: 0, Completed: 1
+## What Was Done
+1. Checked current battery level (75% — good, fixed crash loop)
+2. Verified mac-process-monitor and web dashboard were not auto-running
+3. Created LaunchDaemon plist files for both monitor and dashboard
+4. Attempted to install as LaunchDaemons but blocked by sudo privileges
+5. Cleaned up broken LaunchAgent files from `~/Library/LaunchAgents/`
+6. Created **T8: LaunchDaemon Installation for Auto-Start** task file
+7. Updated `memory-bank/tasks.md` with T8
 
-## Overview
+## Pending Task T8 — LaunchDaemon Installation
 
-- Active: 1 | Paused: 0 | Completed: 1
-- Last Session: 2026-05-26
-- Current Period: morning/afternoon
+**Status**: ⬜ PENDING (needs manual sudo from `deepak` user)
 
-## Active Tasks
+**Files ready**:
+- `~/.openclaw/workspace/code/mac-process-monitor/ai.openclaw.procmon.monitor.plist`
+- `~/.openclaw/workspace/code/mac-process-monitor/ai.openclaw.procmon.dashboard.plist`
 
-### T4: Web Dashboard for Live Monitoring
-**Status:** 🔄 **IN PROGRESS**
-**Started:** 2026-05-18
-**Context**: Unified monitor + dashboard via `src/combined.ts`
-**Progress**:
-- Created `src/combined.ts` — single-process monitor + dashboard
-- Added chart tabs (Battery/CPU/Memory) with SVG line charts
-- Added DB size badge (`🗄`) and uptime badge (`⏱`)
-- Fixed profile filtering (persistent, sortable, "Show All" works)
-- Fixed battery property casing (`isCharging`, `acConnected`, etc.)
-- Added "Plugged In" battery state
-- Moved screenshots to `.playwright-mcp/`
-- Removed broken LaunchAgent (4,427 crash loops)
+**Commands to run** (as `deepak` with sudo password):
+```bash
+sudo mv ~/.openclaw/workspace/code/mac-process-monitor/ai.openclaw.procmon.monitor.plist /Library/LaunchDaemons/
+sudo mv ~/.openclaw/workspace/code/mac-process-monitor/ai.openclaw.procmon.dashboard.plist /Library/LaunchDaemons/
+sudo chown root:wheel /Library/LaunchDaemons/ai.openclaw.procmon.*
+sudo chmod 644 /Library/LaunchDaemons/ai.openclaw.procmon.*
+sudo launchctl bootstrap system /Library/LaunchDaemons/ai.openclaw.procmon.monitor.plist
+sudo launchctl bootstrap system /Library/LaunchDaemons/ai.openclaw.procmon.dashboard.plist
+```
 
-## Completed Tasks
+**Why blocked**: `sage` can `sudo -u deepak` (NOPASSWD) but cannot `sudo` to root. `/Library/LaunchDaemons/` requires root. `deepak` needs to run the commands with his password.
 
-### T1: TypeScript Rewrite — Core Monitor
-**Status:** ✅ **COMPLETED**
-**Started:** 2026-05-18
-**Completed:** 2026-05-18
-
-## Next Session Focus
-
-1. T2: Telegram/OpenClaw Alert Integration (HIGH priority)
-2. T3: Per-Process History Query Interface (MEDIUM priority)
-
-## System Status
-
-- **Memory Bank**: 🔄 Active
-- **OpenClaw**: ✅ Operational
+## Notes
+- Dashboard will be at `http://192.168.1.221:3456` (local IP)
+- Follows same pattern as `ai.openclaw.gateway.sage` (which works)
+- Both plists validated with `plutil -lint` — OK
+- User will run the commands later when at the Mac

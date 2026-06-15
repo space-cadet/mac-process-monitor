@@ -2,7 +2,7 @@
 
 *Project*: mac-process-monitor  
 *Version*: 2.0 (TypeScript rewrite)  
-*Last Updated*: 2026-05-26  
+*Last Updated*: 2026-05-25  
 
 ## Overview
 
@@ -111,61 +111,26 @@ Orchestrator that runs the monitoring loop.
 - `PROCmon_DRAIN_THRESHOLD` — drain rate threshold %/min (default 1.0)
 - `PROCmon_DB_PATH` — SQLite DB location (default `~/.procmon/monitor.db`)
 
-## Web Dashboard (`src/combined.ts` or `src/web/server.ts` + `web/public/`)
+## Web Dashboard (`src/web/server.ts` + `web/public/`)
 
-Lightweight HTTP server serving a real-time dashboard. Two deployment modes:
+Lightweight HTTP server serving a real-time dashboard.
 
-### Unified Mode (`src/combined.ts`) — Recommended
-
-Single process runs both the monitoring loop and the HTTP server:
-
-```
-┌─────────────────────────────────────────┐
-│           src/combined.ts               │
-│  ┌─────────┐    ┌─────────────────────┐ │
-│  │ Monitor │───▶│ TimeSeriesDB        │ │
-│  │ (30s)   │    │ (SQLite, WAL mode)  │ │
-│  └─────────┘    └──────────┬──────────┘ │
-│                            │            │
-│  ┌─────────┐    ┌──────────┴──────────┐ │
-│  │ HTTP    │◀───│ Shared DB instance  │ │
-│  │ Server  │    │ + SystemCollector   │ │
-│  │ (3456)  │    └─────────────────────┘ │
-│  └─────────┘                             │
-└─────────────────────────────────────────┘
-```
-
-**Benefits**:
-- Single process to manage — start with `npx tsx src/combined.ts`
-- No WAL contention (single DB connection)
-- Live `/api/snapshot` uses same `SystemCollector` instance as monitor
-- Graceful shutdown stops both monitor and server
-
-### Standalone Mode (`src/web/server.ts`)
-
-Use when monitor is already running separately (e.g., background daemon).
-
-### API Endpoints
-
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/snapshot` | Live system snapshot (battery, CPU, processes) |
-| `GET /api/history?minutes=N` | Time-series history from DB |
-| `GET /api/drain-events` | Detected drain events |
-| `GET /api/process-history?name=X&minutes=N` | Per-process CPU/memory history |
-| `GET /api/process-stats?name=X&minutes=N` | Process statistics + PID history |
-| `GET /api/top-processes?metric=cpu&limit=N` | Top N processes by metric |
-| `GET /api/profiles` | Process profile management |
-| `GET /api/db-size` | SQLite DB size in MB |
-| `GET /api/server-info` | Server uptime, port, host |
+**Server** (`src/web/server.ts`):
+- Native Node `createServer` (no Express dependency)
+- Serves static files from `web/public/`
+- API endpoints:
+  - `GET /api/snapshot` — **live collection** (not DB cache)
+  - `GET /api/history?minutes=60` — time-series from DB
+  - `GET /api/drain-events` — drain events from DB
+- CORS enabled for local network access
+- Binds to `0.0.0.0:3456` for Android/local network access
 
 **Frontend** (`web/public/app.js`):
 - Vanilla JS, no framework dependencies
 - Auto-refresh every 5 seconds
 - KPI cards: Battery %, CPU %, Memory GB, Status
-- Process table: sortable by CPU or memory, profile filtering
-- Chart tabs: Battery/CPU/Memory SVG line charts with gradient fill
-- DB size badge (`🗄`) and uptime badge (`⏱`)
+- Process table: sortable by CPU or memory, top 10 processes
+- Battery History chart: CSS-based bar chart with Y-axis (%) and X-axis (time)
 - Drain Events panel: list with CSV export
 
 **Styling** (`web/public/styles.css`):
@@ -242,9 +207,8 @@ mac-process-monitor/
 │   ├── types/
 │   │   └── index.ts              # TypeScript interfaces
 │   ├── web/
-│   │   └── server.ts             # Standalone dashboard HTTP server
-│   ├── combined.ts               # Unified monitor + dashboard (recommended)
-│   └── main.ts                   # Monitor orchestrator (standalone)
+│   │   └── server.ts             # Dashboard HTTP server
+│   └── main.ts                   # Monitor orchestrator
 ├── web/public/
 │   ├── index.html                # Dashboard markup
 │   ├── app.js                    # Frontend logic
@@ -258,7 +222,7 @@ mac-process-monitor/
 
 - **T2**: Telegram/OpenClaw alert integration — send drain alerts via messaging
 - **T3**: Per-process query interface — CLI tool for historical process analysis
-- **T4**: Dashboard complete — unified process, chart tabs, badges, profile filtering
+- **T4**: Dashboard polish — CPU history chart, process memory sorting
 - **T5**: Swift menubar app — native macOS UI
 
 ## Dependencies

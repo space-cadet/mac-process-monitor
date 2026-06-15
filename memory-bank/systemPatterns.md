@@ -10,32 +10,84 @@ The monitor follows a pipeline architecture where each stage is independent and 
 │  (data gather)  │      │  (math + logic) │      │  (persistence)  │      │  (notification) │
 │                 │      │                 │      │                 │      │                 │
 └─────────────────┘      └─────────────────┘      └─────────────────┘      └─────────────────┘
-        ▲                                                                            ▲
-        │                                                                            │
-        │         ┌──────────────────────────────────────────────────────────────┐   │
-        │         │                                                              │   │
-        └─────────│                        Monitor                                │───┘
-                  │              (orchestrator: start/stop/tick)                │
-                  │                                                              │
-                  └──────────────────────────────────────────────────────────────┘
-                                     │
-                                     │ WAL mode
-                                     │ (concurrent reads)
-                                     ▼
-                           ┌─────────────────────┐
-                           │   DashboardServer   │
-                           │   (port 3456)       │
-                           │   Native Node http  │
-                           │   src/combined.ts   │
-                           └─────────────────────┘
-                                     │
-                                     ▼
-                           ┌─────────────────────┐
-                           │  Vanilla JS + HTML  │
-                           │  (web/public/)      │
-                           │  SVG line charts    │
-                           └─────────────────────┘
+        │                        │                        │
+        │                        │                        │
+        ▼                        ▼                        ▼
+┌─────────────────┐      ┌─────────────────┐      ┌─────────────────────────┐
+│                 │      │                 │      │                         │
+│  SpikeDetector  │      │BatteryImpact    │      │  Query Tool / Dashboard   │
+│  (baseline +    │      │  Analyzer       │      │  (CLI + HTTP API)         │
+│   threshold)    │      │  (drain scoring)│      │                         │
+│                 │      │                 │      │                         │
+└─────────────────┘      └─────────────────┘      └─────────────────────────┘
+        │                        │
+        │                        │
+        └────────────────────────┘
+                   │
+                   │
+        ┌──────────┴──────────┐
+        │                     │
+        │      Monitor        │
+        │  (orchestrator)     │
+        │                     │
+        └──────────┬──────────┘
+                   │
+                   │ WAL mode
+                   │ (concurrent reads)
+                   ▼
+         ┌─────────────────────┐
+         │   DashboardServer   │
+         │   (port 3456)       │
+         │   Native Node http  │
+         └─────────────────────┘
+                   │
+                   ▼
+         ┌─────────────────────┐
+         │  7-file Modular     │
+         │  Frontend (HTML,    │
+         │  CSS, JS, Charts)   │
+         └─────────────────────┘
 ```
+
+### SpikeDetector (`src/core/SpikeDetector.ts`)
+- Maintains per-process moving average baselines for CPU and memory
+- Dual-threshold detection: absolute (e.g., CPU > 50%) OR relative (e.g., 3x above baseline)
+- 60-second cooldown per process to avoid spam
+- Smart ignore list: `kernel_task`, `WindowServer`, `mds`, `mdworker` excluded
+- Stores spikes in `process_spikes` table with baseline, threshold, snapshot reference
+- Dashboard: Real-time spike panel with clickable cards
+- CLI: `npx tsx src/query.ts --spikes --since 1h`
+
+### BatteryImpactAnalyzer (`src/core/BatteryImpactAnalyzer.ts`)
+- Detects drain periods: battery dropping while not charging
+- Minimum threshold: 2% drop over 2+ minutes
+- Correlates drain with per-process CPU usage
+- Impact score = process share of CPU-seconds × battery drop percentage
+- Accumulates scores via `INSERT ... ON CONFLICT DO UPDATE` in `battery_impact` table
+- Individual drain events stored in `battery_impact_events` with process rankings JSON
+- Dashboard: Battery impact ranking bars with clickable links
+- CLI: `npx tsx src/query.ts --battery --limit 10`
+
+### Query Tool (`src/query.ts`)
+- CLI interface for all data queries
+- Supports: `--spikes`, `--battery`, `--battery-events`, `--top`, `--process`, `--stats`, `--drain-events`
+- Time range filtering: `--since 1h`, `--since 24h`, `--since 7d`
+- All queries exposed as HTTP API endpoints via `DashboardServer`
+
+### DashboardServer (`src/dashboard/server.ts`)
+- Native Node.js `http` module — zero Express dependencies
+- 12 API endpoints for all data queries
+- Serves static files from `dashboard/public/` with proper MIME types
+- CORS-friendly for local network access
+- Port 3456 (configurable)
+
+### Dashboard Frontend (`dashboard/public/`)
+- 7-file modular architecture: `index.html`, `style.css`, `utils.js`, `charts.js`, `tables.js`, `profiles.js`, `app.js`
+- Side-by-side layout: tables left, charts right; stacks on mobile
+- Features: sortable columns, process detail modal, spike panel, battery impact panel, profile CRUD
+- Chart.js for 5 chart instances: CPU/Memory, Battery, Load/Swap/Temp, Disk/Network I/O, Process History
+- Auto-refresh every 5 seconds
+- Responsive: mobile breakpoints at 900px and 600px
 
 ## Key Components
 
@@ -65,23 +117,16 @@ The monitor follows a pipeline architecture where each stage is independent and 
 - `insertDrainEvent()`: stores event + serialized top processes JSON
 - `cleanupOldSamples()`: deletes snapshots older than retention days (cascade via FK)
 
-### DashboardServer (`src/combined.ts` or `src/web/server.ts`)
+### DashboardServer (`src/dashboard/server.ts`)
 - Native Node.js `http` server — no Express dependency
-- Two deployment modes:
-  - **Unified** (`src/combined.ts`): Monitor + server in one process, shared DB
-  - **Standalone** (`src/web/server.ts`): Server only, queries existing DB
-- Serves static files from `web/public/` (index.html, app.js, styles.css)
-- Nine JSON API endpoints:
-  - `/api/snapshot` — live system snapshot
-  - `/api/history?minutes=N` — time-series history
+- Serves static files from `public/` (index.html, app.js, style.css)
+- Four JSON API endpoints query `TimeSeriesDB` directly:
+  - `/api/snapshots?minutes=N` — recent system snapshots
+  - `/api/processes?limit=N` — top processes from latest snapshot
   - `/api/drain-events` — all drain events
-  - `/api/process-history?name=X&minutes=N` — per-process history
-  - `/api/process-stats?name=X&minutes=N` — process statistics
-  - `/api/top-processes?metric=cpu&limit=N` — top processes
-  - `/api/profiles` — process profile management
-  - `/api/db-size` — SQLite DB size
-  - `/api/server-info` — server uptime and metadata
+  - `/api/stats` — DB snapshot/event counts
 - WAL mode enables concurrent reads without blocking the monitor writer
+- Standalone entry point (`src/dashboard.ts`) — runs independently of monitor
 - Port 3456, no auth (local-only)
 
 ### Monitor (`src/core/Monitor.ts`)

@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import fs from 'fs';
 import { SystemSnapshot, DrainEvent } from '../types/index.js';
 
 /**
@@ -7,16 +8,17 @@ import { SystemSnapshot, DrainEvent } from '../types/index.js';
  */
 export class TimeSeriesDB {
   private db: Database.Database;
+  private dbPath: string;
 
   constructor(dbPath: string = '~/.procmon/monitor.db') {
-    const expandedPath = dbPath.replace(/^~/, process.env.HOME || '');
+    this.dbPath = dbPath.replace(/^~/, process.env.HOME || '');
     const fs = require('fs');
     const path = require('path');
-    const dir = path.dirname(expandedPath);
+    const dir = path.dirname(this.dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
-    this.db = new Database(expandedPath);
+    this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.initTables();
     this.migrateSchema();
@@ -141,6 +143,50 @@ export class TimeSeriesDB {
         processes_json TEXT NOT NULL,
         created_at INTEGER NOT NULL
       );
+    `);
+
+    // Process spikes - detected resource usage spikes
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS process_spikes (
+        id TEXT PRIMARY KEY,
+        timestamp INTEGER NOT NULL,
+        process_name TEXT NOT NULL,
+        pid INTEGER NOT NULL,
+        metric_type TEXT NOT NULL,
+        value REAL NOT NULL,
+        baseline REAL NOT NULL,
+        threshold REAL NOT NULL,
+        snapshot_id INTEGER,
+        FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_spikes_time ON process_spikes(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_spikes_process ON process_spikes(process_name);
+    `);
+
+    // Battery impact - accumulated per-process battery drain scores
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS battery_impact (
+        process_name TEXT PRIMARY KEY,
+        total_impact_score REAL NOT NULL DEFAULT 0,
+        drain_time_minutes REAL NOT NULL DEFAULT 0,
+        samples_during_drain INTEGER NOT NULL DEFAULT 0,
+        avg_cpu_during_drain REAL NOT NULL DEFAULT 0,
+        last_seen_timestamp INTEGER NOT NULL,
+        first_seen_timestamp INTEGER NOT NULL
+      );
+    `);
+
+    // Battery impact events - individual drain period details
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS battery_impact_events (
+        id TEXT PRIMARY KEY,
+        start_time INTEGER NOT NULL,
+        end_time INTEGER NOT NULL,
+        duration_minutes REAL NOT NULL,
+        battery_drop_percent REAL NOT NULL,
+        process_impacts_json TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_impact_events_time ON battery_impact_events(start_time);
     `);
   }
 
@@ -293,14 +339,24 @@ export class TimeSeriesDB {
     this.db.prepare('DELETE FROM snapshots WHERE timestamp < ?').run(cutoff);
   }
 
-  getStats(): { totalSnapshots: number; totalEvents: number; oldestSnapshot: number | null } {
+  getStats(): { totalSnapshots: number; totalEvents: number; oldestSnapshot: number | null; dbSizeBytes: number } {
     const snapshots = this.db.prepare('SELECT COUNT(*) as count, MIN(timestamp) as oldest FROM snapshots').get() as any;
     const events = this.db.prepare('SELECT COUNT(*) as count FROM drain_events').get() as any;
+    
+    // Get DB file size
+    let dbSizeBytes = 0;
+    try {
+      const stat = fs.statSync(this.dbPath);
+      dbSizeBytes = stat.size;
+    } catch {
+      // Ignore if file not accessible
+    }
     
     return {
       totalSnapshots: snapshots.count,
       totalEvents: events.count,
       oldestSnapshot: snapshots.oldest,
+      dbSizeBytes,
     };
   }
 
@@ -404,6 +460,123 @@ export class TimeSeriesDB {
       ...r,
       values: r.cpu_values ? r.cpu_values.split(',').map(Number) : [],
     }));
+  }
+
+  // ─── Process Spike Methods ───
+
+  insertProcessSpike(spike: ProcessSpike): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO process_spikes (id, timestamp, process_name, pid, metric_type, value, baseline, threshold, snapshot_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      spike.id,
+      spike.timestamp,
+      spike.processName,
+      spike.pid,
+      spike.metricType,
+      spike.value,
+      spike.baseline,
+      spike.threshold,
+      spike.snapshotId
+    );
+  }
+
+  getRecentSpikes(processName?: string, minutes: number = 60): any[] {
+    const cutoff = Date.now() - minutes * 60000;
+    let sql = 'SELECT * FROM process_spikes WHERE timestamp > ?';
+    const params: any[] = [cutoff];
+    if (processName) {
+      sql += ' AND process_name LIKE ?';
+      params.push(`%${processName}%`);
+    }
+    sql += ' ORDER BY timestamp DESC';
+    const stmt = this.db.prepare(sql);
+    return stmt.all(...params) as any[];
+  }
+
+  getSpikeStats(sinceTimestamp: number): any[] {
+    const stmt = this.db.prepare(`
+      SELECT 
+        process_name,
+        metric_type,
+        COUNT(*) as spike_count,
+        AVG(value) as avg_value,
+        MAX(value) as peak_value,
+        AVG(threshold) as avg_threshold
+      FROM process_spikes
+      WHERE timestamp > ?
+      GROUP BY process_name, metric_type
+      ORDER BY spike_count DESC
+    `);
+    return stmt.all(sinceTimestamp) as any[];
+  }
+
+  // ─── Battery Impact Methods ───
+
+  insertBatteryImpactEvent(event: BatteryImpactEvent): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO battery_impact_events (id, start_time, end_time, duration_minutes, battery_drop_percent, process_impacts_json)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      event.id,
+      event.startTime,
+      event.endTime,
+      event.durationMinutes,
+      event.batteryDropPercent,
+      JSON.stringify(event.processImpacts)
+    );
+
+    // Also update accumulated impact scores
+    const updateStmt = this.db.prepare(`
+      INSERT INTO battery_impact (process_name, total_impact_score, drain_time_minutes, samples_during_drain, avg_cpu_during_drain, last_seen_timestamp, first_seen_timestamp)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(process_name) DO UPDATE SET
+        total_impact_score = total_impact_score + excluded.total_impact_score,
+        drain_time_minutes = drain_time_minutes + excluded.drain_time_minutes,
+        samples_during_drain = samples_during_drain + excluded.samples_during_drain,
+        avg_cpu_during_drain = (avg_cpu_during_drain * samples_during_drain + excluded.avg_cpu_during_drain * excluded.samples_during_drain) / (samples_during_drain + excluded.samples_during_drain),
+        last_seen_timestamp = excluded.last_seen_timestamp
+    `);
+
+    for (const proc of event.processImpacts) {
+      updateStmt.run(
+        proc.processName,
+        proc.impactScore,
+        event.durationMinutes,
+        proc.samples,
+        proc.avgCpuPercent,
+        event.endTime,
+        event.startTime
+      );
+    }
+  }
+
+  getBatteryImpactRankings(limit: number = 20): any[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM battery_impact
+      ORDER BY total_impact_score DESC
+      LIMIT ?
+    `);
+    return stmt.all(limit) as any[];
+  }
+
+  getBatteryImpactEvents(sinceTimestamp?: number): any[] {
+    let sql = 'SELECT * FROM battery_impact_events';
+    const params: any[] = [];
+    if (sinceTimestamp) {
+      sql += ' WHERE start_time > ?';
+      params.push(sinceTimestamp);
+    }
+    sql += ' ORDER BY start_time DESC';
+    const stmt = this.db.prepare(sql);
+    return stmt.all(...params) as any[];
+  }
+
+  getBatteryImpactForProcess(processName: string): any {
+    const stmt = this.db.prepare('SELECT * FROM battery_impact WHERE process_name = ?');
+    return stmt.get(processName) as any || null;
   }
 
   // ─── Monitoring Profiles ───

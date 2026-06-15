@@ -13,8 +13,9 @@
 - **Node.js built-ins**: `process` for signals, `path`/`fs` for DB path resolution
 
 ### Storage
-- **SQLite**: Time-series DB with three tables — `snapshots`, `process_samples`, `drain_events`
+- **SQLite**: Time-series DB with six tables — `snapshots`, `process_samples`, `drain_events`, `process_spikes`, `battery_impact`, `battery_impact_events`
 - **better-sqlite3**: Chosen for synchronous, simple API (no async transaction overhead)
+- **WAL mode**: Enabled for concurrent reads (dashboard queries while monitor writes)
 
 ### Configuration
 - **Inline TypeScript config**: `MonitorConfig` interface passed to `Monitor` constructor
@@ -24,7 +25,6 @@
 ### Testing
 - **tsx direct execution**: Test scripts are runnable TypeScript files (`test-basic.ts`, `test-collector.ts`, `test-analyzer.ts`)
 - **No formal test framework yet** — validated via live systeminformation calls + fake data injection
-- **Playwright E2E tests** — Dashboard UI tests with screenshot capture
 
 ### Alerting
 - **Planned**: OpenClaw message tool integration (T2)
@@ -40,9 +40,7 @@
 ### Development Setup
 ```bash
 pnpm install
-npx tsx src/combined.ts    # Run unified monitor + dashboard (recommended)
-npx tsx src/main.ts        # Run monitor only (standalone)
-npx tsx src/web/server.ts  # Run dashboard only (standalone)
+npx tsx src/main.ts        # Run monitor
 npx tsx src/show-data.ts   # Show current system data
 npx tsx src/test-basic.ts  # Validate battery/process collection
 ```
@@ -76,7 +74,9 @@ npx tsx src/test-basic.ts  # Validate battery/process collection
 - `@types/node@^22.0.0` — Node.js type definitions
 
 ### Future Dependencies (T2-T4)
+- `express` or native `http` module — Dashboard server (T4)
 - `node-telegram-bot-api` or OpenClaw message tool — Alerts (T2)
+- `chart.js` or lightweight canvas library — Dashboard charts (T4)
 
 ## Deployment Strategy
 
@@ -101,10 +101,7 @@ mac-process-monitor/
 │   │   └── Monitor.ts            # Orchestrator loop
 │   ├── storage/
 │   │   └── TimeSeriesDB.ts       # SQLite time-series storage
-│   ├── web/
-│   │   └── server.ts             # Standalone dashboard server
-│   ├── combined.ts               # Unified monitor + dashboard
-│   ├── main.ts                   # Monitor entry point (standalone)
+│   ├── main.ts                   # Entry point
 │   ├── show-data.ts              # Live data display
 │   ├── test-basic.ts             # Battery/process validation
 │   ├── test-collector.ts         # Collector + DB integration

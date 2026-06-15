@@ -1,7 +1,9 @@
 import { SystemCollector } from './SystemCollector.js';
 import { DrainAnalyzer } from './DrainAnalyzer.js';
+import { SpikeDetector } from './SpikeDetector.js';
+import { BatteryImpactAnalyzer } from './BatteryImpactAnalyzer.js';
 import { TimeSeriesDB } from '../storage/TimeSeriesDB.js';
-import { MonitorConfig, AlertConfig, DrainEvent } from '../types/index.js';
+import { MonitorConfig, AlertConfig, DrainEvent, ProcessSpike, BatteryImpactEvent } from '../types/index.js';
 
 /**
  * Main monitor orchestrator.
@@ -10,6 +12,8 @@ import { MonitorConfig, AlertConfig, DrainEvent } from '../types/index.js';
 export class Monitor {
   private collector: SystemCollector;
   private analyzer: DrainAnalyzer;
+  private spikeDetector: SpikeDetector;
+  private batteryImpactAnalyzer: BatteryImpactAnalyzer;
   private db: TimeSeriesDB;
   private config: MonitorConfig;
   private timer: NodeJS.Timeout | null = null;
@@ -26,6 +30,26 @@ export class Monitor {
         minDuration: 2,           // minutes
         cooldownMinutes: 10,
       },
+      spike: {
+        enabled: true,
+        thresholds: {
+          cpuPercent: 50,          // Absolute threshold: 50% CPU
+          memoryPercent: 20,       // Absolute threshold: 20% memory
+          cpuMultiplier: 3,        // 3x above baseline
+          memoryMultiplier: 3,     // 3x above baseline
+          minBaselineSamples: 5,   // Need 5 samples before multiplier kicks in
+          cooldownSeconds: 60,     // 1 minute between spikes for same process
+        },
+        watchedProcesses: [],
+        ignoredProcesses: ['kernel_task', 'WindowServer', 'mds', 'mdworker'],
+      },
+      batteryImpact: {
+        enabled: true,
+        analysisWindowMinutes: 5,
+        minBatteryDropPercent: 2.0,
+        minDurationMinutes: 2,
+        scoreDecayHours: 168,      // 7 days (optional, not yet implemented)
+      },
       ...config,
     };
 
@@ -33,6 +57,15 @@ export class Monitor {
     this.analyzer = new DrainAnalyzer(
       5,  // 5-minute analysis window
       this.config.sampleIntervalSeconds
+    );
+    this.spikeDetector = new SpikeDetector(
+      this.config.spike.thresholds,
+      this.config.spike.watchedProcesses,
+      this.config.spike.ignoredProcesses
+    );
+    this.batteryImpactAnalyzer = new BatteryImpactAnalyzer(
+      this.config.batteryImpact.minBatteryDropPercent,
+      this.config.batteryImpact.minDurationMinutes
     );
     this.db = new TimeSeriesDB(this.config.dbPath);
   }
@@ -44,6 +77,8 @@ export class Monitor {
     console.log(`[Monitor] Starting — sampling every ${this.config.sampleIntervalSeconds}s`);
     console.log(`[Monitor] DB: ${this.config.dbPath}`);
     console.log(`[Monitor] Alert threshold: ${this.config.alert.drainThreshold}%/min`);
+    console.log(`[Monitor] Spike detection: ${this.config.spike.enabled ? 'ON' : 'OFF'}`);
+    console.log(`[Monitor] Battery impact tracking: ${this.config.batteryImpact.enabled ? 'ON' : 'OFF'}`);
 
     // Initial sample
     await this.tick();
@@ -71,7 +106,7 @@ export class Monitor {
       const snapshot = await this.collector.getSystemSnapshot();
       
       // Store in DB
-      this.db.insertSnapshot(snapshot);
+      const snapshotId = this.db.insertSnapshot(snapshot);
       
       // Feed to analyzer
       this.analyzer.addSample(snapshot);
@@ -85,6 +120,22 @@ export class Monitor {
       
       if (event) {
         this.handleDrainEvent(event);
+      }
+
+      // Spike detection
+      if (this.config.spike.enabled) {
+        const spikes = this.spikeDetector.detectSpikes(snapshot.processes, snapshotId);
+        for (const spike of spikes) {
+          this.handleSpike(spike);
+        }
+      }
+
+      // Battery impact analysis
+      if (this.config.batteryImpact.enabled) {
+        const impactEvent = this.batteryImpactAnalyzer.addSample(snapshot);
+        if (impactEvent) {
+          this.handleBatteryImpactEvent(impactEvent);
+        }
       }
       
       // Periodic cleanup
@@ -114,6 +165,27 @@ export class Monitor {
     if (this.config.alert.enabled) {
       this.sendAlert(event);
     }
+  }
+
+  private handleSpike(spike: ProcessSpike): void {
+    console.log(`\n🔥 PROCESS SPIKE: ${spike.processName} (PID ${spike.pid})`);
+    console.log(`   Metric: ${spike.metricType.toUpperCase()}`);
+    console.log(`   Value: ${spike.value.toFixed(1)}% (baseline: ${spike.baseline.toFixed(1)}%, threshold: ${spike.threshold.toFixed(1)}%)`);
+    console.log();
+
+    this.db.insertProcessSpike(spike);
+  }
+
+  private handleBatteryImpactEvent(event: BatteryImpactEvent): void {
+    console.log(`\n🔋 BATTERY IMPACT PERIOD DETECTED`);
+    console.log(`   Battery: ${event.batteryDropPercent.toFixed(1)}% drop over ${event.durationMinutes.toFixed(1)} minutes`);
+    console.log(`   Top process impacts:`);
+    for (const proc of event.processImpacts.slice(0, 5)) {
+      console.log(`     • ${proc.processName}: ${proc.impactScore.toFixed(2)} score (${proc.cpuSeconds.toFixed(1)} CPU-seconds, ${proc.avgCpuPercent.toFixed(1)}% avg CPU)`);
+    }
+    console.log();
+
+    this.db.insertBatteryImpactEvent(event);
   }
 
   private async sendAlert(event: DrainEvent): Promise<void> {
@@ -146,6 +218,8 @@ export class Monitor {
       sampleCount: this.analyzer.getSampleCount(),
       windowMinutes: this.analyzer.getWindowDurationMinutes(),
       db: this.db.getStats(),
+      spikeBaselines: this.spikeDetector.getBaselineStats().size,
+      batteryDrainActive: this.batteryImpactAnalyzer.getCurrentDrain() !== null,
     };
   }
 }

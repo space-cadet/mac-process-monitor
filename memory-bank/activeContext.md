@@ -1,41 +1,25 @@
 # Active Context
 
-*Last Updated: 2026-05-26 13:19 IST*
+*Last Updated: 2026-06-10 01:15 IST*
 
 ## Current Tasks
 
-1. **[T4]**: Web Dashboard for Live Monitoring (MEDIUM priority)
-   - Status: 🔄 IN PROGRESS
-   - Output: `src/combined.ts` runs monitor + dashboard in single process
-   - Server on port 3456, DB actively recording (2,976 snapshots, 148,800 process samples)
-   - Chart tabs (Battery/CPU/Memory) all plotting live SVG line charts
-   - DB size badge (`🗄`) and uptime badge (`⏱`) in header
-   - Profile filtering with persistent sort state
-   - Files: `src/combined.ts`, `src/web/server.ts`, `web/public/app.js`, `web/public/index.html`, `web/public/styles.css`
-
-2. **[T2]**: Telegram/OpenClaw Alert Integration (HIGH priority)
-   - Status: ⬜ PENDING
-   - Next: Wire `sendAlert()` in Monitor.ts to dispatch messages via Telegram bot or OpenClaw
-
-3. **[T3]**: Per-Process History Query Interface (MEDIUM priority)
-   - Status: ⬜ PENDING
-   - Next: Build CLI tool (`npx tsx src/query.ts --process Chrome --since 2h`)
-   - Note: `combined.ts` already has `/api/process-history` and `/api/process-stats` endpoints
-
-4. **[T5]**: Swift Menubar App (LOW priority)
-   - Status: ⬜ PENDING
-   - Next: Port proven TypeScript logic to Swift after T2-T4 stable
+No active tasks. All core features (T1, T3, T4, T6, T7) are complete. Only T2 (alerting) and T5 (Swift menubar) remain pending.
 
 ## Completed Tasks (Recent)
-- T1: TypeScript rewrite — battery, process tracking, drain detection, SQLite storage (2026-05-18)
+- **T6: Process Spike Detection** (2026-06-09) — Per-process baseline tracking, dual-threshold detection, DB storage, CLI queries, dashboard integration
+- **T7: Battery Impact Correlation** (2026-06-09) — Drain period detection, per-process impact scoring, accumulated rankings, CLI + dashboard
+- **T4: Web Dashboard Rebuild** (2026-06-10) — Modular 7-file frontend, side-by-side layout, sortable columns, process modal, spike panel, battery impact panel, profiles CRUD, 12 API endpoints
+- **T3: Per-Process Query Interface** (2026-06-10) — CLI tool with `--spikes`, `--battery`, `--top`, `--process`, `--stats` options, all exposed via dashboard API
 
 ## Next Steps
-- T2: Telegram alerting — integrate OpenClaw message tool or node-telegram-bot-api
-- T3: Process queries — CLI tool for per-process history analysis
-- T5: Swift menubar — native macOS app (future)
+- **T2: Telegram/OpenClaw Alert Integration** — Wire `Monitor.sendAlert()` to actually dispatch messages via OpenClaw message tool or Telegram bot
+- **T5: Swift Menubar App** — Port proven TypeScript logic to Swift after T2 stable
 
 ## System Status
-- **Battery**: Monitoring via `systeminformation`
-- **DB**: `~/.procmon/monitor.db` with snapshots + process samples
-- **Dashboard**: Running on http://localhost:3456 (via `npx tsx src/combined.ts`)
-- **Monitor**: Running within `combined.ts`, sampling every 30s
+- **Battery**: Varies (monitoring active)
+- **Memory**: Normal
+- **DB**: `~/.procmon/monitor.db` with 6 tables: snapshots, process_samples, drain_events, process_spikes, battery_impact, battery_impact_events
+- **Dashboard**: Running on http://localhost:3456 (auto-refresh every 5s)
+- **Monitor**: Stopped after test run — needs restart for continuous sampling
+- **GitHub Repo**: https://github.com/space-cadet/mac-process-monitor (public)

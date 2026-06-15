@@ -68,8 +68,75 @@ export interface DrainEvent {
   wasCharging: boolean;
 }
 
-// Alert configuration
-export interface AlertConfig {
+// ─── NEW: Spike Detection ───
+
+export interface SpikeThresholds {
+  cpuPercent: number;       // Absolute CPU % threshold (e.g., 50%)
+  memoryPercent: number;    // Absolute memory % threshold
+  cpuMultiplier: number;    // Multiplier above baseline (e.g., 3x)
+  memoryMultiplier: number; // Multiplier above baseline
+  minBaselineSamples: number; // Min samples before baseline is valid
+  cooldownSeconds: number;  // Cooldown between spikes for same process
+}
+
+export interface ProcessSpike {
+  id: string;
+  timestamp: number;
+  processName: string;
+  pid: number;
+  metricType: 'cpu' | 'memory';
+  value: number;            // The spiked value
+  baseline: number;       // Moving average baseline
+  threshold: number;      // Threshold that was crossed
+  snapshotId: number;     // Reference to snapshot
+}
+
+export interface SpikeConfig {
+  enabled: boolean;
+  thresholds: SpikeThresholds;
+  watchedProcesses?: string[]; // If empty, watch all
+  ignoredProcesses?: string[]; // Always ignore these
+}
+
+// ─── NEW: Battery Impact ───
+
+export interface BatteryImpactEntry {
+  processName: string;
+  totalImpactScore: number;    // Cumulative CPU-seconds during drain
+  drainTimeMinutes: number;    // Total time correlated with drain
+  samplesDuringDrain: number;  // Number of samples included
+  avgCpuDuringDrain: number;   // Average CPU % during drain periods
+  lastSeenTimestamp: number;
+  firstSeenTimestamp: number;
+}
+
+export interface BatteryImpactEvent {
+  id: string;
+  startTime: number;
+  endTime: number;
+  durationMinutes: number;
+  batteryDropPercent: number;
+  processImpacts: ProcessImpact[];
+}
+
+export interface ProcessImpact {
+  processName: string;
+  pid: number;
+  cpuSeconds: number;      // CPU% × duration
+  avgCpuPercent: number;
+  avgMemoryPercent: number;
+  samples: number;
+  impactScore: number;     // Normalized score for this event
+}
+
+export interface BatteryImpactConfig {
+  enabled: boolean;
+  analysisWindowMinutes: number;   // How long a drain period to analyze
+  minBatteryDropPercent: number;    // Minimum battery drop to count as drain
+  minDurationMinutes: number;       // Minimum duration to count
+  scoreDecayHours: number;          // How often to decay old scores (optional)
+}
+
   enabled: boolean;
   telegramBotToken?: string;
   telegramChatId?: string;
@@ -84,4 +151,6 @@ export interface MonitorConfig {
   dbPath: string;
   retentionDays: number;
   alert: AlertConfig;
+  spike: SpikeConfig;
+  batteryImpact: BatteryImpactConfig;
 }

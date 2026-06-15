@@ -1,21 +1,58 @@
 # Edit History
 
-*Last Updated: 2026-05-26 13:19 IST*
+*Last Updated: 2026-06-10 01:15 IST*
 
 ---
 
-## 2026-05-26
+## 2026-06-10
 
-#### 13:19:00 IST - T4: Unified monitor+dashboard, chart tabs, badges, profile fixes
-- Created `src/combined.ts` - Unified monitor + dashboard in single process
-- Modified `src/web/server.ts` - Added `/api/db-size` and `/api/server-info` endpoints
-- Modified `src/core/SystemCollector.ts` - Fixed battery property casing (camelCase)
-- Modified `web/public/app.js` - Chart tabs (Battery/CPU/Memory), DB size badge, uptime badge, profile filtering, SVG line chart
-- Modified `web/public/index.html` - Header badges, chart tabs, SVG chart structure
-- Modified `web/public/styles.css` - Badge styles, chart tab styles, SVG chart styles
-- Modified `.gitignore` - Added `.playwright-mcp/`
-- Modified `memory-bank/database/import-existing-data.js` - Fixed paths for memory-bank subdir
-- Deleted `dashboard-screenshot.png` - Moved to `.playwright-mcp/`
+#### 01:15 IST - T6 + T7 + T4: Spike Detection, Battery Impact, Dashboard Rebuild
+
+**T6: Process Spike Detection**
+- Created `src/core/SpikeDetector.ts` - Per-process baseline tracking, dual-threshold detection, cooldown logic
+- Modified `src/types/index.ts` - Added `SpikeThresholds`, `ProcessSpike`, `SpikeConfig` interfaces
+- Modified `src/storage/TimeSeriesDB.ts` - Added `process_spikes` table with `insertProcessSpike()`, `getRecentSpikes()`, `getSpikeStats()`
+- Modified `src/core/Monitor.ts` - Integrated `SpikeDetector` into tick loop with default config (CPU 50%, memory 20%, 3x multiplier, 60s cooldown)
+- Modified `src/query.ts` - Added `--spikes` query option with stats and timeline views
+
+**T7: Battery Impact Correlation**
+- Created `src/core/BatteryImpactAnalyzer.ts` - Drain period detection, per-process impact scoring, accumulation logic
+- Modified `src/types/index.ts` - Added `BatteryImpactEntry`, `BatteryImpactEvent`, `ProcessImpact`, `BatteryImpactConfig` interfaces
+- Modified `src/storage/TimeSeriesDB.ts` - Added `battery_impact` and `battery_impact_events` tables with ranking queries
+- Modified `src/core/Monitor.ts` - Integrated `BatteryImpactAnalyzer` into tick loop (min 2% drop, 2+ min duration)
+- Modified `src/query.ts` - Added `--battery` and `--battery-events` query options
+
+**T4: Web Dashboard Rebuild**
+- Identified regression: advanced dashboard features (sortable columns, side-by-side layout, profiles, modal) were overwritten by minimal version in commit cb86bdb (Jun 8)
+- Rebuilt 7-file modular frontend:
+  - `dashboard/public/index.html` - Side-by-side layout, responsive, process modal, profile modal
+  - `dashboard/public/style.css` - Dark theme, cards, spike cards, battery bars, profile cards, responsive breakpoints
+  - `dashboard/public/utils.js` - Formatting helpers, sort utilities, DOM helpers, API wrappers (GET/POST/PUT/DELETE)
+  - `dashboard/public/charts.js` - Chart.js initialization, 5 chart instances (CPU, battery, extras, IO, process history)
+  - `dashboard/public/tables.js` - Sortable table rendering, process detail modal, spike panel, battery impact panel, drain table
+  - `dashboard/public/profiles.js` - Profile CRUD UI, color picker, form modal
+  - `dashboard/public/app.js` - Orchestration: data fetch loop, refresh every 5s, event wiring
+- Modified `src/dashboard/server.ts` - Added 8 new API endpoints: `/api/spikes`, `/api/spike-stats`, `/api/battery-impact`, `/api/battery-events`, `/api/process-history`, `/api/process-stats`, `/api/top-processes`, `/api/profiles` (CRUD)
+- Added `dbSizeBytes` to `/api/stats` endpoint via `fs.statSync()` on DB file
+- Fixed process modal `[object Object]` bug: click handler passed object instead of `p.name`
+
+**Memory Bank Updates**
+- Updated `tasks.md` - Marked T3, T4, T6, T7 as completed
+- Updated `tasks/T4.md` - Complete dashboard rebuild documentation with 7-file architecture and API endpoints
+- Updated `tasks/T3.md` - Per-process query interface with CLI and API documentation
+- Updated `tasks/T6.md` - Spike detection with baseline tracking and dual thresholds
+- Updated `tasks/T7.md` - Battery impact with drain detection and scoring
+- Updated `activeContext.md` - Current status with all completed tasks
+- Updated `progress.md` - Full project status with timeline
+- Updated `session_cache.md` - Session completion notes
+- Updated `techContext.md` - 6-table DB schema, WAL mode
+- Updated `systemPatterns.md` - Architecture diagram including SpikeDetector, BatteryImpactAnalyzer, Query Tool, DashboardServer
+- Updated `edit_history.md` - This edit chunk
+
+**GitHub**
+- Repo made public: https://github.com/space-cadet/mac-process-monitor
+
+---
 
 ## 2026-05-25
 

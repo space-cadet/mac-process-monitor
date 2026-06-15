@@ -3,81 +3,202 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Process Monitor Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <link rel="stylesheet" href="style.css">
+  <title>Process Monitor</title>
+  <link rel="stylesheet" href="style.css?v=2">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <div class="container">
     <header>
       <h1>🔋 Process Monitor</h1>
-      <div class="stats-bar" id="stats-bar">
+      <div class="stats-bar">
         <span>DB: <strong id="db-snapshots">--</strong> snapshots</span>
+        <span>Size: <strong id="db-size">--</strong></span>
         <span>Events: <strong id="db-events">--</strong></span>
-        <span>Last update: <strong id="last-update">--</strong></span>
+        <span>Updated: <span id="last-update">--</span></span>
       </div>
     </header>
 
-    <div class="grid">
-      <div class="card wide">
-        <h2>CPU & Memory</h2>
-        <canvas id="cpu-chart"></canvas>
+    <!-- Main content: side-by-side on desktop, stacked on mobile -->
+    <div class="main-grid">
+      <!-- Left column: tables -->
+      <div class="left-column">
+        <!-- Processes -->
+        <div class="card">
+          <h2>🔥 Processes</h2>
+          <div class="table-scroll">
+            <table id="process-table">
+              <thead>
+                <tr>
+                  <th data-sort="name">Process</th>
+                  <th data-sort="pid">PID</th>
+                  <th data-sort="cpu_percent">CPU%</th>
+                  <th data-sort="cpu_user_percent">User%</th>
+                  <th data-sort="cpu_system_percent">Sys%</th>
+                  <th data-sort="memory_percent">Mem%</th>
+                  <th data-sort="rss_mb">RSS MB</th>
+                  <th>State</th>
+                  <th>Nice</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Spikes -->
+        <div class="card">
+          <h2>⚡ Recent Spikes</h2>
+          <div id="spike-panel" class="spike-panel">
+            <div class="empty">Loading spikes...</div>
+          </div>
+        </div>
+
+        <!-- Drain events -->
+        <div class="card">
+          <h2>🔌 Drain Events</h2>
+          <div class="table-scroll">
+            <table id="drain-table">
+              <thead>
+                <tr>
+                  <th>Start</th>
+                  <th>Battery</th>
+                  <th>Rate</th>
+                  <th>Duration</th>
+                  <th>Top Process</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="no-drains" class="empty" style="display:none">No drain events recorded</div>
+        </div>
       </div>
 
-      <div class="card wide">
-        <h2>Battery</h2>
-        <canvas id="battery-chart"></canvas>
-      </div>
+      <!-- Right column: charts + battery -->
+      <div class="right-column">
+        <div class="card">
+          <h2>CPU & Memory</h2>
+          <div class="chart-wrap">
+            <canvas id="cpu-chart"></canvas>
+          </div>
+        </div>
 
-      <div class="card">
-        <h2>Load, Swap, Temp</h2>
-        <canvas id="extras-chart"></canvas>
-      </div>
+        <div class="card">
+          <h2>Battery</h2>
+          <div class="chart-wrap">
+            <canvas id="battery-chart"></canvas>
+          </div>
+        </div>
 
-      <div class="card">
-        <h2>Disk & Network</h2>
-        <canvas id="io-chart"></canvas>
-      </div>
+        <div class="card">
+          <h2>Load, Swap, Temperature</h2>
+          <div class="chart-wrap">
+            <canvas id="extras-chart"></canvas>
+          </div>
+        </div>
 
-      <div class="card wide">
-        <h2>Top Processes</h2>
-        <table id="process-table">
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>PID</th>
-              <th>CPU %</th>
-              <th>User %</th>
-              <th>Sys %</th>
-              <th>Mem %</th>
-              <th>RSS (MB)</th>
-              <th>State</th>
-              <th>Nice</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+        <div class="card">
+          <h2>Disk & Network I/O</h2>
+          <div class="chart-wrap">
+            <canvas id="io-chart"></canvas>
+          </div>
+        </div>
 
-      <div class="card wide">
-        <h2>Drain Events</h2>
-        <table id="drain-table">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Drop</th>
-              <th>Rate</th>
-              <th>Duration</th>
-              <th>Top Process</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-        <p id="no-drains" class="empty">No drain events recorded yet.</p>
+        <!-- Battery Impact -->
+        <div class="card">
+          <h2>🔋 Battery Impact Rankings</h2>
+          <div id="battery-panel" class="battery-panel">
+            <div class="empty">No battery impact data yet</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom: Profiles -->
+    <div class="card wide">
+      <div class="profile-section-header">
+        <h2>👁 Monitoring Profiles</h2>
+        <button id="btn-new-profile" class="btn-primary">+ New Profile</button>
+      </div>
+      <div id="profiles-container" class="profiles-grid">
+        <div class="empty">No profiles yet</div>
       </div>
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <!-- Process Detail Modal -->
+  <div id="process-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modal-title">Process</h3>
+        <button class="modal-close" onclick="hideProcessModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-grid">
+          <div class="modal-stats">
+            <h4>Statistics</h4>
+            <table>
+              <tbody id="modal-stats"></tbody>
+            </table>
+          </div>
+          <div class="modal-chart">
+            <h4>History (60 min)</h4>
+            <div class="chart-wrap">
+              <canvas id="process-history-chart"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="modal-history">
+          <h4>Recent Samples</h4>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr><th>Time</th><th>CPU%</th><th>Mem%</th></tr>
+              </thead>
+              <tbody id="modal-history"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile Form Modal -->
+  <div id="profile-modal" class="modal">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h3 id="profile-form-title">New Profile</h3>
+        <button class="modal-close" onclick="hideProfileForm()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="profile-form">
+          <input type="hidden" id="profile-id">
+          <div class="form-group">
+            <label>Name</label>
+            <input type="text" id="profile-name" required>
+          </div>
+          <div class="form-group">
+            <label>Color</label>
+            <input type="color" id="profile-color" value="#3b82f6">
+          </div>
+          <div class="form-group">
+            <label>Processes (comma-separated)</label>
+            <textarea id="profile-processes" rows="3" placeholder="Chrome, Safari, Firefox"></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="hideProfileForm()">Cancel</button>
+            <button type="submit" class="btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script src="utils.js?v=2"></script>
+  <script src="charts.js?v=2"></script>
+  <script src="tables.js?v=2"></script>
+  <script src="profiles.js?v=2"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

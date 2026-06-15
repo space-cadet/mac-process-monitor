@@ -1,7 +1,7 @@
 import { TimeSeriesDB } from '../storage/TimeSeriesDB.js';
 import { SystemCollector } from '../core/SystemCollector.js';
 import { createServer } from 'http';
-import { readFileSync, existsSync, statSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -131,45 +131,6 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/api/db-size') {
-    try {
-      const stats = statSync(dbPath);
-      const size = stats.size;
-      const sizeMB = (size / (1024 * 1024)).toFixed(2);
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ size, sizeMB, path: dbPath }));
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: (err as Error).message }));
-    }
-    return;
-  }
-
-  if (pathname === '/api/server-info') {
-    const uptimeMs = Date.now() - serverStartTime;
-    const uptimeSec = Math.floor(uptimeMs / 1000);
-    const uptimeMin = Math.floor(uptimeSec / 60);
-    const uptimeHr = Math.floor(uptimeMin / 60);
-    let uptimeStr;
-    if (uptimeHr > 0) {
-      uptimeStr = `${uptimeHr}h ${uptimeMin % 60}m ${uptimeSec % 60}s`;
-    } else if (uptimeMin > 0) {
-      uptimeStr = `${uptimeMin}m ${uptimeSec % 60}s`;
-    } else {
-      uptimeStr = `${uptimeSec}s`;
-    }
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      startTime: serverStartTime,
-      uptimeMs,
-      uptimeSec,
-      uptimeStr,
-      port: PORT,
-      host: HOST,
-    }));
-    return;
-  }
-
   if (pathname === '/api/profiles') {
     try {
       if (req.method === 'GET') {
@@ -223,7 +184,6 @@ const server = createServer(async (req, res) => {
 
 const PORT = process.env.PORT || 3456;
 const HOST = '0.0.0.0';
-const serverStartTime = Date.now();
 
 server.listen(PORT, HOST, () => {
   console.log(`[Dashboard] Server running on http://${HOST}:${PORT}`);

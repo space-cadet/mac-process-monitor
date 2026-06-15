@@ -13,6 +13,8 @@ interface QueryOptions {
   limit: number;
   csv: boolean;
   drainEvent?: string;
+  spikes?: boolean;
+  battery?: boolean;
 }
 
 function parseArgs(): QueryOptions {
@@ -42,8 +44,11 @@ function parseArgs(): QueryOptions {
       case '--csv':
         opts.csv = true;
         break;
-      case '--drain-event':
-        opts.drainEvent = args[++i];
+      case '--spikes':
+        opts.spikes = true;
+        break;
+      case '--battery':
+        opts.battery = true;
         break;
       case '--help':
       case '-h':
@@ -82,12 +87,16 @@ Options:
   -n, --limit <n>         Limit results (default: 10)
       --csv               Output CSV format
       --drain-event <id>  Show processes during a specific drain event
+      --spikes            Show recent process spikes
+      --battery           Show battery impact rankings
   -h, --help              Show this help
 
 Examples:
   npx tsx src/query.ts --process Chrome --since 10m
   npx tsx src/query.ts --process node --since 2h --stats
   npx tsx src/query.ts --top cpu --limit 5 --since 5m
+  npx tsx src/query.ts --spikes --since 1h
+  npx tsx src/query.ts --battery --limit 10
   npx tsx src/query.ts --process Chrome --since 1h --csv > chrome.csv
 `);
 }
@@ -219,6 +228,72 @@ function printCSV(rows: any[]): void {
   }
 }
 
+function printSpikes(db: TimeSeriesDB, processName: string | undefined, sinceMinutes: number): void {
+  const rows = db.getRecentSpikes(processName, sinceMinutes);
+  if (rows.length === 0) {
+    console.log('No spikes found in the specified time window.');
+    return;
+  }
+
+  console.log(`\nProcess Spikes — last ${sinceMinutes}m\n`);
+  console.log('Time       Process              PID      Metric  Value   Baseline  Threshold');
+  console.log('─────────  ───────────────────  ───────  ──────  ──────  ────────  ─────────');
+
+  for (const r of rows) {
+    const time = formatTime(r.timestamp);
+    const proc = r.process_name.slice(0, 20).padEnd(20);
+    const metric = r.metric_type.toUpperCase().padEnd(6);
+    console.log(
+      `${time}  ${proc}  ${String(r.pid).padEnd(7)}  ${metric}  ${String(r.value.toFixed(1)).padStart(6)}  ${String(r.baseline.toFixed(1)).padStart(8)}  ${String(r.threshold.toFixed(1)).padStart(9)}`
+    );
+  }
+
+  console.log(`\nTotal spikes: ${rows.length}`);
+}
+
+function printSpikeStats(db: TimeSeriesDB, sinceMinutes: number): void {
+  const cutoff = Date.now() - sinceMinutes * 60000;
+  const rows = db.getSpikeStats(cutoff);
+  if (rows.length === 0) {
+    console.log('No spike statistics available.');
+    return;
+  }
+
+  console.log(`\nSpike Statistics — last ${sinceMinutes}m\n`);
+  console.log('Process              Metric  Count  AvgValue  PeakValue  AvgThreshold');
+  console.log('───────────────────  ──────  ─────  ────────  ─────────  ────────────');
+
+  for (const r of rows) {
+    const proc = r.process_name.slice(0, 20).padEnd(20);
+    const metric = r.metric_type.toUpperCase().padEnd(6);
+    console.log(
+      `${proc}  ${metric}  ${String(r.spike_count).padStart(5)}  ${String(r.avg_value.toFixed(1)).padStart(8)}  ${String(r.peak_value.toFixed(1)).padStart(9)}  ${String(r.avg_threshold.toFixed(1)).padStart(12)}`
+    );
+  }
+}
+
+function printBatteryRankings(db: TimeSeriesDB, limit: number): void {
+  const rows = db.getBatteryImpactRankings(limit);
+  if (rows.length === 0) {
+    console.log('No battery impact data available yet.');
+    return;
+  }
+
+  console.log(`\nBattery Impact Rankings (Top ${limit})\n`);
+  console.log('Rank  Process              Impact  Drain(min)  Samples  AvgCPU%  FirstSeen        LastSeen');
+  console.log('────  ───────────────────  ──────  ──────────  ───────  ───────  ───────────────  ───────────────');
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const proc = r.process_name.slice(0, 20).padEnd(20);
+    const first = new Date(r.first_seen_timestamp).toLocaleString().slice(0, 15);
+    const last = new Date(r.last_seen_timestamp).toLocaleString().slice(0, 15);
+    console.log(
+      `${String(i + 1).padStart(4)}  ${proc}  ${String(r.total_impact_score.toFixed(2)).padStart(6)}  ${String(r.drain_time_minutes.toFixed(1)).padStart(10)}  ${String(r.samples_during_drain).padStart(7)}  ${String(r.avg_cpu_during_drain.toFixed(1)).padStart(7)}  ${first.padEnd(15)}  ${last}`
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const opts = parseArgs();
   const db = new TimeSeriesDB();
@@ -226,6 +301,14 @@ async function main(): Promise<void> {
   try {
     if (opts.top) {
       printTop(db, opts.top, opts.limit, opts.since);
+    } else if (opts.spikes) {
+      if (opts.stats) {
+        printSpikeStats(db, opts.since);
+      } else {
+        printSpikes(db, opts.process, opts.since);
+      }
+    } else if (opts.battery) {
+      printBatteryRankings(db, opts.limit);
     } else if (opts.process) {
       const cutoff = Date.now() - opts.since * 60000;
       const rows = db.getProcessHistory(opts.process, cutoff);
@@ -241,7 +324,7 @@ async function main(): Promise<void> {
       // TODO: implement drain event correlation
       console.log('Drain event correlation not yet implemented.');
     } else {
-      console.log('No query specified. Use --process <name> or --top <metric>');
+      console.log('No query specified. Use --process <name> or --top <metric> or --spikes or --battery');
       console.log('Run with --help for usage.');
     }
   } finally {
