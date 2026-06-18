@@ -1,8 +1,8 @@
 # Progress Report: mac-process-monitor
 
-*Last Updated: 2026-06-18 02:24 IST*
+*Last Updated: 2026-06-19 00:52 IST*
 
-## Project Status: T1-T8 Complete; T9-T16 Pending
+## Project Status: T1-T8 Complete + T4 Extended; T9-T16 Pending
 
 ### What Works
 
@@ -12,8 +12,12 @@
   - Drain, spike, and battery impact alerts all wired
   - Per-event cooldowns prevent spam
 - **T3 — Per-Process Query Interface**: ✅ COMPLETE
-- **T4 — Web Dashboard**: ✅ COMPLETE
-  - Settings tab added (2026-06-18): DB management, logging toggles, config save
+- **T4 — Web Dashboard**: ✅ COMPLETE (Extended 2026-06-19)
+  - v1: Basic HTML dashboard (2026-05-18)
+  - v2: Full rebuild with charts, profiles, 12 API endpoints (2026-06-10)
+  - v3: **Analysis tab** with 6 preset SQL queries, quick stats, export (2026-06-19)
+  - v3: **Settings tab** with restart button, confirmation dialog, config management (2026-06-19)
+  - Dashboard auto-start via cron (monitors both monitor + dashboard processes)
 - **T6 — Process Spike Detection**: ✅ COMPLETE
 - **T7 — Battery Impact Correlation**: ✅ COMPLETE
 - **T8 — LaunchDaemon Installation**: ✅ COMPLETE
@@ -62,6 +66,7 @@
 | 2026-06-18 | T2: Real alerts (Telegram + macOS notifications) | ✅ |
 | 2026-06-18 | Settings tab: full config management + DB cleanup | ✅ |
 | 2026-06-18 | Tasks T9-T16 created and prioritized | ✅ |
+| 2026-06-19 | T4-ext: Analysis + Settings tabs, 6 SQL queries, export | ✅ |
 | *Next* | T9: Sleep/Wake correlation or T10: Reports | ⬜ |
 
 ### Current Blockers

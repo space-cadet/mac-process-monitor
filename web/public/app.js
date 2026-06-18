@@ -5,7 +5,329 @@ let refreshInterval = null;
 let currentChartTab = 'battery';
 let chartHistoryData = [];
 let chartTimeRange = 60;
+let currentAnalysisData = null;
+let currentAnalysisTitle = '';
 
+// ─── Main Tab Switching ───
+function switchMainTab(tab) {
+  document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.main-tab[data-tab="${tab}"]`).classList.add('active');
+  document.getElementById(`${tab}Tab`).classList.add('active');
+
+  if (tab === 'analysis') {
+    loadQuickStats();
+  }
+}
+
+// ─── Analysis: Preset Queries ───
+const PRESET_QUERIES = {
+  batteryTrend: {
+    title: 'Battery Trend (Daily Average)',
+    endpoint: '/api/analysis/battery-trend',
+    description: 'Average battery drain rate per day'
+  },
+  topBatteryImpact: {
+    title: 'Top Battery Impact Processes',
+    endpoint: '/api/analysis/top-battery-impact',
+    description: 'Processes with highest cumulative battery impact'
+  },
+  spikePatterns: {
+    title: 'Spike Frequency by Process',
+    endpoint: '/api/analysis/spike-patterns',
+    description: 'CPU/memory spike count per process'
+  },
+  drainCorrelation: {
+    title: 'Drain Event Correlation',
+    endpoint: '/api/analysis/drain-correlation',
+    description: 'Top processes during battery drain events'
+  },
+  idleVsActive: {
+    title: 'Idle vs Active Hours',
+    endpoint: '/api/analysis/idle-active',
+    description: 'System activity patterns by hour of day'
+  },
+  processConsistency: {
+    title: 'Process CPU Consistency',
+    endpoint: '/api/analysis/process-stats',
+    description: 'Average, peak, and standard deviation per process'
+  }
+};
+
+async function runPresetQuery(queryKey) {
+  const preset = PRESET_QUERIES[queryKey];
+  if (!preset) return;
+
+  currentAnalysisTitle = preset.title;
+  document.getElementById('analysisTitle').textContent = preset.title;
+  document.getElementById('analysisContent').innerHTML = '<div class="analysis-loading">⏳ Running analysis...</div>';
+
+  try {
+    const res = await fetch(`${API_BASE}${preset.endpoint}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    currentAnalysisData = data;
+    renderAnalysisResults(data, queryKey);
+  } catch (err) {
+    document.getElementById('analysisContent').innerHTML =
+      `<div class="analysis-error">❌ Error: ${err.message}</div>`;
+  }
+}
+
+function renderAnalysisResults(data, queryKey) {
+  const container = document.getElementById('analysisContent');
+
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    container.innerHTML = '<div class="analysis-placeholder"><div class="placeholder-icon">📭</div><h3>No data found</h3><p>Try a different time range or check back later.</p></div>';
+    return;
+  }
+
+  switch (queryKey) {
+    case 'batteryTrend':
+      renderBatteryTrend(data, container);
+      break;
+    case 'topBatteryImpact':
+      renderTopBatteryImpact(data, container);
+      break;
+    case 'spikePatterns':
+      renderSpikePatterns(data, container);
+      break;
+    case 'drainCorrelation':
+      renderDrainCorrelation(data, container);
+      break;
+    case 'idleVsActive':
+      renderIdleVsActive(data, container);
+      break;
+    case 'processConsistency':
+      renderProcessConsistency(data, container);
+      break;
+    default:
+      renderGenericTable(data, container);
+  }
+}
+
+function renderBatteryTrend(data, container) {
+  const rows = data.map(d => `
+    <tr>
+      <td>${d.date}</td>
+      <td>${d.avgBattery?.toFixed(1) || '--'}%</td>
+      <td>${d.minBattery?.toFixed(1) || '--'}%</td>
+      <td>${d.maxBattery?.toFixed(1) || '--'}%</td>
+      <td>${d.samples || '--'}</td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="analysis-table-wrapper">
+      <table class="analysis-table">
+        <thead>
+          <tr><th>Date</th><th>Avg Battery</th><th>Min Battery</th><th>Max Battery</th><th>Samples</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="analysis-summary">
+      <p><strong>Insight:</strong> ${data.length} days of data. 
+      ${data.length > 1 && data[0].avgBattery != null && data[data.length-1].avgBattery != null
+        ? `Battery trend: ${data[0].avgBattery > data[data.length-1].avgBattery ? 'Declining' : 'Improving'} over recorded period.`
+        : ''}
+      </p>
+    </div>
+  `;
+}
+
+function renderTopBatteryImpact(data, container) {
+  const rows = data.slice(0, 20).map((d, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${d.name}</strong></td>
+      <td>${d.totalImpact?.toFixed(1) || '--'}</td>
+      <td>${d.events || '--'}</td>
+      <td>${d.avgImpact?.toFixed(2) || '--'}</td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="analysis-table-wrapper">
+      <table class="analysis-table">
+        <thead>
+          <tr><th>#</th><th>Process</th><th>Total Impact</th><th>Events</th><th>Avg Impact</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="analysis-summary">
+      <p><strong>Top culprit:</strong> ${data[0]?.name || 'N/A'} with ${data[0]?.totalImpact?.toFixed(1) || '--'} total impact score.</p>
+    </div>
+  `;
+}
+
+function renderSpikePatterns(data, container) {
+  const rows = data.slice(0, 20).map((d, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${d.name}</strong></td>
+      <td>${d.cpuSpikes || 0}</td>
+      <td>${d.memSpikes || 0}</td>
+      <td>${d.totalSpikes || 0}</td>
+      <td>${d.avgCpu?.toFixed(1) || '--'}%</td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="analysis-table-wrapper">
+      <table class="analysis-table">
+        <thead>
+          <tr><th>#</th><th>Process</th><th>CPU Spikes</th><th>Mem Spikes</th><th>Total</th><th>Avg CPU</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderDrainCorrelation(data, container) {
+  const rows = data.slice(0, 20).map((d, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${d.name}</strong></td>
+      <td>${d.drainEvents || 0}</td>
+      <td>${d.totalCpu?.toFixed(1) || '--'}</td>
+      <td>${d.avgCpu?.toFixed(1) || '--'}%</td>
+      <td>${d.frequency?.toFixed(1) || '--'}%</td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="analysis-table-wrapper">
+      <table class="analysis-table">
+        <thead>
+          <tr><th>#</th><th>Process</th><th>Drain Events</th><th>Total CPU</th><th>Avg CPU</th><th>Frequency</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderIdleVsActive(data, container) {
+  const rows = data.map(d => `
+    <tr>
+      <td>${d.hour}:00</td>
+      <td>${d.avgCpu?.toFixed(1) || '--'}%</td>
+      <td>${d.avgBattery?.toFixed(1) || '--'}%</td>
+      <td>${d.samples || 0}</td>
+      <td><span class="activity-badge ${d.activityLevel}">${d.activityLevel}</span></td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="analysis-table-wrapper">
+      <table class="analysis-table">
+        <thead>
+          <tr><th>Hour</th><th>Avg CPU</th><th>Avg Battery</th><th>Samples</th><th>Activity</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div class="analysis-summary">
+      <p><strong>Peak activity:</strong> ${data.filter(d => d.activityLevel === 'high').map(d => d.hour + ':00').join(', ') || 'N/A'}</p>
+    </div>
+  `;
+}
+
+function renderProcessConsistency(data, container) {
+  const rows = data.slice(0, 20).map((d, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${d.name}</strong></td>
+      <td>${d.avgCpu?.toFixed(1) || '--'}%</td>
+      <td>${d.peakCpu?.toFixed(1) || '--'}%</td>
+      <td>${d.stdCpu?.toFixed(2) || '--'}</td>
+      <td>${d.samples || 0}</td>
+    </tr>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="analysis-table-wrapper">
+      <table class="analysis-table">
+        <thead>
+          <tr><th>#</th><th>Process</th><th>Avg CPU</th><th>Peak CPU</th><th>Std Dev</th><th>Samples</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderGenericTable(data, container) {
+  if (!Array.isArray(data) || !data.length) {
+    container.innerHTML = '<div class="analysis-placeholder"><div class="placeholder-icon">📭</div><h3>No data</h3></div>';
+    return;
+  }
+  const keys = Object.keys(data[0]);
+  const headers = keys.map(k => `<th>${k}</th>`).join('');
+  const rows = data.map(row => `<tr>${keys.map(k => `<td>${row[k] ?? '--'}</td>`).join('')}</tr>`).join('');
+
+  container.innerHTML = `
+    <div class="analysis-table-wrapper">
+      <table class="analysis-table">
+        <thead><tr>${headers}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function loadQuickStats() {
+  try {
+    const [dbStats, drainRes, spikeRes] = await Promise.all([
+      fetch(`${API_BASE}/api/db-stats`).then(r => r.json()).catch(() => ({})),
+      fetch(`${API_BASE}/api/drain-events`).then(r => r.json()).catch(() => []),
+      fetch(`${API_BASE}/api/analysis/spike-patterns`).then(r => r.json()).catch(() => [])
+    ]);
+
+    document.getElementById('qsTotalSamples').textContent = (dbStats.totalSnapshots || 0).toLocaleString();
+    document.getElementById('qsTotalDrains').textContent = drainRes.length || 0;
+    document.getElementById('qsTotalSpikes').textContent = spikeRes.reduce((sum, s) => sum + (s.totalSpikes || 0), 0);
+
+    const days = dbStats.oldestSnapshot
+      ? Math.round((Date.now() - new Date(dbStats.oldestSnapshot).getTime()) / 86400000)
+      : 0;
+    document.getElementById('qsUptime').textContent = days || '--';
+  } catch (err) {
+    console.error('Quick stats error:', err);
+  }
+}
+
+function exportAnalysisJSON() {
+  if (!currentAnalysisData) return alert('No analysis data to export');
+  const blob = new Blob([JSON.stringify(currentAnalysisData, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `analysis-${currentAnalysisTitle.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportAnalysisCSV() {
+  if (!currentAnalysisData || !Array.isArray(currentAnalysisData) || !currentAnalysisData.length) {
+    return alert('No analysis data to export');
+  }
+  const keys = Object.keys(currentAnalysisData[0]);
+  const rows = currentAnalysisData.map(row => keys.map(k => JSON.stringify(row[k] ?? '')).join(','));
+  const csv = [keys.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `analysis-${currentAnalysisTitle.toLowerCase().replace(/\s+/g, '-')}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Overview Tab (existing functionality) ───
 async function loadDbSize() {
   try {
     const res = await fetch(`${API_BASE}/api/db-size`);
@@ -46,31 +368,23 @@ async function fetchData() {
 }
 
 function updateDashboard(data) {
-  // Battery
   const battery = data.battery;
   document.getElementById('batteryValue').innerHTML = `${Math.round(battery.percent)}<span>%</span>`;
   document.getElementById('batteryFill').style.width = `${battery.percent}%`;
 
-  // Status text: show "Plugged In" when AC connected but not charging
   let statusText = 'On battery';
-  if (battery.isCharging) {
-    statusText = 'Charging';
-  } else if (battery.isPlugged) {
-    statusText = 'Plugged In';
-  }
+  if (battery.isCharging) statusText = 'Charging';
+  else if (battery.isPlugged) statusText = 'Plugged In';
   document.getElementById('batteryStatus').textContent = statusText;
 
-  // Cycle count and time remaining
   const cycles = battery.cycleCount != null ? battery.cycleCount : '--';
   let timeRem = '--';
-  if (battery.isPlugged) {
-    timeRem = 'AC power';
-  } else if (battery.timeRemaining != null && battery.timeRemaining >= 0 && battery.timeRemaining < 10000) {
+  if (battery.isPlugged) timeRem = 'AC power';
+  else if (battery.timeRemaining != null && battery.timeRemaining >= 0 && battery.timeRemaining < 10000) {
     timeRem = Math.round(battery.timeRemaining / 60) + 'h remaining';
   }
   document.getElementById('batteryDetail').textContent = `${cycles} cycles \u2022 ${timeRem}`;
 
-  // CPU
   const cpuTotal = data.cpuTotal || 0;
   document.getElementById('cpuValue').innerHTML = `${cpuTotal.toFixed(1)}<span>%</span>`;
 
@@ -85,13 +399,11 @@ function updateDashboard(data) {
   }
   document.getElementById('cpuDetail').textContent = `${data.processes.length} processes tracked`;
 
-  // Memory
   const memGB = data.memoryTotal ? (data.memoryTotal / 100 * 8).toFixed(1) : '--';
   document.getElementById('memValue').innerHTML = `${memGB}<span>GB</span>`;
   document.getElementById('memPercent').textContent = data.memoryTotal ? `${data.memoryTotal.toFixed(1)}% used` : '--';
   document.getElementById('memDetail').textContent = 'of 8.2 GB total';
 
-  // Status
   const statusValue = document.getElementById('statusValue');
   const statusTrend = document.getElementById('statusTrend');
 
@@ -114,7 +426,6 @@ function updateDashboard(data) {
   }
   document.getElementById('statusDetail').textContent = new Date(data.timestamp).toLocaleTimeString();
 
-  // Processes
   currentProcesses = data.processes || [];
   renderProcesses();
 }
@@ -195,14 +506,6 @@ function renderProcesses() {
   updateSortIndicators();
 }
 
-function sortProcesses(by, clickedBtn) {
-  currentSort = { column: by, direction: 'desc' };
-  renderProcesses();
-  const buttons = document.querySelectorAll('.panel-actions .panel-btn');
-  buttons.forEach(btn => btn.classList.remove('active'));
-  if (clickedBtn) clickedBtn.classList.add('active');
-}
-
 // ─── Chart Tabs ───
 function switchChartTab(tab) {
   currentChartTab = tab;
@@ -241,7 +544,6 @@ function renderLineChart(data) {
     return;
   }
 
-  // Determine metric based on active tab
   let metricKey, maxVal, yLabels, accentColor, accentVar;
   switch (currentChartTab) {
     case 'cpu':
@@ -258,7 +560,7 @@ function renderLineChart(data) {
       accentColor = 'var(--accent-mem)';
       accentVar = '--accent-mem';
       break;
-    default: // battery
+    default:
       metricKey = 'battery_percent';
       maxVal = 100;
       yLabels = ['100%', '75%', '50%', '25%', '0%'];
@@ -266,12 +568,8 @@ function renderLineChart(data) {
       accentVar = '--accent-battery';
   }
 
-  // Update Y-axis labels
-  if (yAxis) {
-    yAxis.innerHTML = yLabels.map(l => `<span>${l}</span>`).join('');
-  }
+  if (yAxis) yAxis.innerHTML = yLabels.map(l => `<span>${l}</span>`).join('');
 
-  // Build points
   const n = data.length;
   const padding = { top: 2, bottom: 2, left: 0, right: 0 };
   const chartW = 100 - padding.left - padding.right;
@@ -284,17 +582,12 @@ function renderLineChart(data) {
     return { x, y, val, ts: d.timestamp };
   });
 
-  // Line path
   const lineD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ');
-
-  // Area fill path (close the bottom)
   const areaD = `${lineD} L ${points[points.length - 1].x.toFixed(2)} ${padding.top + chartH} L ${points[0].x.toFixed(2)} ${padding.top + chartH} Z`;
 
-  // Sample points for dots (max ~15, evenly spaced)
   const maxDots = 15;
   const sampleStep = Math.max(1, Math.floor(points.length / maxDots));
   const sampledPoints = points.filter((_, i) => i % sampleStep === 0 || i === points.length - 1);
-  // De-duplicate if last point got sampled twice
   const uniquePoints = sampledPoints.filter((p, i, arr) => i === 0 || p.x !== arr[i-1].x);
 
   const pointsHtml = uniquePoints.map(p => `
@@ -303,14 +596,12 @@ function renderLineChart(data) {
       data-value="${p.val.toFixed(1)}" data-time="${new Date(p.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}"/>
   `).join('');
 
-  // Update gradient color
   const gradientStops = svg.querySelectorAll('#lineGradient stop');
   if (gradientStops.length >= 2) {
     gradientStops[0].setAttribute('stop-color', `var(${accentVar})`);
     gradientStops[1].setAttribute('stop-color', `var(${accentVar})`);
   }
 
-  // Update SVG content
   const lineEl = document.getElementById('chartLine');
   const areaEl = document.getElementById('chartAreaFill');
   const pointsEl = document.getElementById('chartPoints');
@@ -321,13 +612,11 @@ function renderLineChart(data) {
   areaEl.setAttribute('d', areaD);
   pointsEl.innerHTML = pointsHtml;
 
-  // Tooltip on hover
   pointsEl.querySelectorAll('.chart-point').forEach(pt => {
     pt.addEventListener('mouseenter', (e) => showChartTooltip(e, pt.dataset.value, pt.dataset.time));
     pt.addEventListener('mouseleave', hideChartTooltip);
   });
 
-  // X-axis labels
   if (xAxis) {
     const first = data[0];
     const last = data[data.length - 1];
@@ -560,10 +849,7 @@ async function saveProfile() {
   const name = document.getElementById('profileName').value.trim();
   const color = document.getElementById('profileColor').value;
 
-  if (!name) {
-    alert('Please enter a profile name');
-    return;
-  }
+  if (!name) { alert('Please enter a profile name'); return; }
 
   const processFields = document.querySelectorAll('.process-field');
   const processes = Array.from(processFields).map(field => ({
@@ -572,16 +858,11 @@ async function saveProfile() {
     memThreshold: parseFloat(field.querySelector('.proc-mem').value) || null,
   })).filter(p => p.name);
 
-  if (!processes.length) {
-    alert('Please add at least one process');
-    return;
-  }
+  if (!processes.length) { alert('Please add at least one process'); return; }
 
   const profile = {
     id: editingProfileId || 'profile_' + Date.now(),
-    name,
-    color,
-    processes,
+    name, color, processes,
   };
 
   try {
@@ -591,12 +872,8 @@ async function saveProfile() {
       body: JSON.stringify(profile),
     });
 
-    if (res.ok) {
-      closeProfileModal();
-      loadProfiles();
-    } else {
-      alert('Failed to save profile');
-    }
+    if (res.ok) { closeProfileModal(); loadProfiles(); }
+    else { alert('Failed to save profile'); }
   } catch (err) {
     console.error('Save profile error:', err);
     alert('Failed to save profile: ' + err.message);
@@ -605,20 +882,13 @@ async function saveProfile() {
 
 async function deleteProfile(id) {
   if (!confirm('Delete this profile?')) return;
-
   try {
     const res = await fetch(`${API_BASE}/api/profiles?id=${id}`, { method: 'DELETE' });
-    if (res.ok) {
-      loadProfiles();
-    }
-  } catch (err) {
-    console.error('Delete profile error:', err);
-  }
+    if (res.ok) loadProfiles();
+  } catch (err) { console.error('Delete profile error:', err); }
 }
 
-function editProfile(id) {
-  showProfileModal(id);
-}
+function editProfile(id) { showProfileModal(id); }
 
 function viewProfile(id) {
   const profile = profiles.find(p => p.id === id);
@@ -648,18 +918,15 @@ function exportCSV() {
     .then(r => r.json())
     .then(events => {
       if (!events.length) return alert('No drain events to export');
-
       const headers = ['Start Time', 'End Time', 'Start %', 'End %', 'Drain Rate (%/min)', 'Duration (min)', 'Top Processes'];
       const rows = events.map(e => [
         new Date(e.startTime).toISOString(),
         new Date(e.endTime).toISOString(),
-        e.startPercent,
-        e.endPercent,
+        e.startPercent, e.endPercent,
         e.drainRate.toFixed(2),
         e.durationMinutes.toFixed(1),
         e.topProcesses?.map(p => `${p.name}:${p.cpuPercent.toFixed(1)}%`).join('; ') || ''
       ]);
-
       const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
@@ -683,8 +950,23 @@ async function loadSettings() {
     document.getElementById('settingsOldest').textContent = data.oldestSnapshot
       ? new Date(data.oldestSnapshot).toLocaleDateString()
       : 'N/A';
+  } catch (err) { console.error('Settings load error:', err); }
+}
+
+function confirmCleanup() {
+  const days = document.getElementById('retentionDays').value;
+  if (!confirm(`Delete all data older than ${days} days? This cannot be undone.`)) return;
+  runCleanup();
+}
+
+async function restartMonitor() {
+  if (!confirm('Restart the monitor process? The dashboard will briefly lose connection.')) return;
+  try {
+    const res = await fetch(`${API_BASE}/api/restart`, { method: 'POST' });
+    const data = await res.json();
+    alert(data.message || 'Monitor restart initiated');
   } catch (err) {
-    console.error('Settings load error:', err);
+    alert('Restart signal sent. Monitor should restart shortly.');
   }
 }
 
@@ -693,9 +975,7 @@ async function runCleanup() {
   const result = document.getElementById('cleanupResult');
   const days = parseInt(document.getElementById('retentionDays').value) || 30;
 
-  btn.disabled = true;
-  btn.textContent = 'Cleaning...';
-  result.style.display = 'none';
+  btn.disabled = true; btn.textContent = 'Cleaning...'; result.style.display = 'none';
 
   try {
     const res = await fetch(`${API_BASE}/api/cleanup`, {
@@ -707,18 +987,14 @@ async function runCleanup() {
     if (data.success) {
       result.className = 'settings-result';
       result.textContent = `✅ Cleaned! Freed ${data.freedMB} MB. Remaining: ${data.remainingSnapshots} snapshots (${data.remainingMB} MB)`;
-      loadSettings();
-      loadDbSize();
-    } else {
-      throw new Error(data.error || 'Cleanup failed');
-    }
+      loadSettings(); loadDbSize();
+    } else { throw new Error(data.error || 'Cleanup failed'); }
   } catch (err) {
     result.className = 'settings-result error';
     result.textContent = `❌ Error: ${err.message}`;
   } finally {
     result.style.display = 'block';
-    btn.disabled = false;
-    btn.textContent = '🗑 Clean Old Data';
+    btn.disabled = false; btn.textContent = '🗑 Clean Old Data';
   }
 }
 
@@ -726,10 +1002,7 @@ function saveRefreshInterval() {
   const seconds = parseInt(document.getElementById('refreshIntervalInput').value) || 5;
   if (refreshInterval) clearInterval(refreshInterval);
   refreshInterval = setInterval(() => {
-    fetchData();
-    loadDrainEvents();
-    loadDbSize();
-    loadServerInfo();
+    fetchData(); loadDrainEvents(); loadDbSize(); loadServerInfo();
   }, seconds * 1000);
   alert(`Refresh interval set to ${seconds} seconds`);
 }
@@ -739,8 +1012,6 @@ async function loadMonitorConfig() {
     const res = await fetch(`${API_BASE}/api/config`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const config = await res.json();
-
-    // Populate fields
     document.getElementById('retentionDays').value = config.retentionDays || 30;
     document.getElementById('retentionSizeMB').value = config.retentionSizeMB || 400;
     document.getElementById('sampleInterval').value = config.sampleIntervalSeconds || 30;
@@ -748,16 +1019,13 @@ async function loadMonitorConfig() {
     document.getElementById('logProcesses').checked = config.logProcesses !== false;
     document.getElementById('logSpikes').checked = config.logSpikes !== false;
     document.getElementById('logBatteryImpact').checked = config.logBatteryImpact !== false;
-  } catch (err) {
-    console.error('Config load error:', err);
-  }
+  } catch (err) { console.error('Config load error:', err); }
 }
 
 async function saveMonitorConfig() {
   const btn = document.querySelector('#settingsPanel .panel-btn.primary');
   const originalText = btn.textContent;
-  btn.textContent = 'Saving...';
-  btn.disabled = true;
+  btn.textContent = 'Saving...'; btn.disabled = true;
 
   try {
     const config = {
@@ -779,17 +1047,12 @@ async function saveMonitorConfig() {
     const data = await res.json();
     if (data.success) {
       document.getElementById('restartNotice').style.display = 'block';
-      setTimeout(() => {
-        document.getElementById('restartNotice').style.display = 'none';
-      }, 30000);
-    } else {
-      throw new Error(data.error || 'Save failed');
-    }
+      setTimeout(() => { document.getElementById('restartNotice').style.display = 'none'; }, 30000);
+    } else { throw new Error(data.error || 'Save failed'); }
   } catch (err) {
     alert('Failed to save config: ' + err.message);
   } finally {
-    btn.textContent = originalText;
-    btn.disabled = false;
+    btn.textContent = originalText; btn.disabled = false;
   }
 }
 
@@ -805,10 +1068,7 @@ function init() {
   loadMonitorConfig();
 
   refreshInterval = setInterval(() => {
-    fetchData();
-    loadDrainEvents();
-    loadDbSize();
-    loadServerInfo();
+    fetchData(); loadDrainEvents(); loadDbSize(); loadServerInfo();
   }, 5000);
 }
 

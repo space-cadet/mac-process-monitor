@@ -1168,3 +1168,273 @@ footer {
   font-size: 11px;
   color: var(--text);
 }
+
+/* ─── Main Tab Navigation ─── */
+.main-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.main-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.main-tab:hover {
+  color: var(--text);
+  border-color: rgba(255,255,255,0.15);
+  background: var(--surface-raised);
+}
+
+.main-tab.active {
+  background: var(--accent-battery-dim);
+  color: var(--accent-battery);
+  border-color: rgba(34,211,238,0.3);
+}
+
+.main-tab .tab-icon {
+  font-size: 16px;
+}
+
+/* ─── Tab Content ─── */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* ─── Analysis Layout ─── */
+.analysis-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .analysis-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ─── Preset Buttons ─── */
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preset-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 12px 14px;
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: var(--font-display);
+}
+
+.preset-btn:hover {
+  background: var(--surface-raised);
+  border-color: rgba(255,255,255,0.12);
+  transform: translateX(4px);
+}
+
+.preset-icon {
+  font-size: 20px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+  border-radius: 8px;
+}
+
+.preset-info {
+  flex: 1;
+}
+
+.preset-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-bright);
+}
+
+.preset-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* ─── Quick Stats ─── */
+.quick-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.quick-stat {
+  text-align: center;
+  padding: 12px;
+  background: var(--surface);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.quick-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-bright);
+  font-family: var(--font-display);
+}
+
+.quick-stat-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* ─── Analysis Content ─── */
+.analysis-content {
+  min-height: 300px;
+}
+
+.analysis-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--text-dim);
+}
+
+.placeholder-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.analysis-placeholder h3 {
+  font-size: 16px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.analysis-placeholder p {
+  font-size: 13px;
+}
+
+.analysis-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--text-dim);
+  font-size: 14px;
+}
+
+.analysis-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--accent-drain);
+  font-size: 14px;
+}
+
+/* ─── Analysis Table ─── */
+.analysis-table-wrapper {
+  overflow-x: auto;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.analysis-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.analysis-table th {
+  text-align: left;
+  padding: 10px 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+.analysis-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+}
+
+.analysis-table tr:hover td {
+  background: var(--surface-raised);
+}
+
+.analysis-summary {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--accent-battery-dim);
+  border-radius: 8px;
+  border: 1px solid rgba(34,211,238,0.2);
+  font-size: 13px;
+  color: var(--text);
+}
+
+.activity-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.activity-badge.high {
+  background: var(--accent-cpu-dim);
+  color: var(--accent-cpu);
+}
+
+.activity-badge.medium {
+  background: var(--accent-mem-dim);
+  color: var(--accent-mem);
+}
+
+.activity-badge.low {
+  background: rgba(16,185,129,0.1);
+  color: var(--accent-ok);
+}
+
+/* ─── Analysis Main Panel ─── */
+.analysis-main {
+  min-width: 0;
+}

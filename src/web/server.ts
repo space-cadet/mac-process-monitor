@@ -5,6 +5,7 @@ import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { exec } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -243,6 +244,225 @@ const server = createServer(async (req, res) => {
           res.end(JSON.stringify({ error: 'Invalid JSON' }));
         }
       });
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  // ─── Analysis Endpoints ───
+  if (pathname === '/api/analysis/battery-trend') {
+    try {
+      const rows = db.db.prepare(`
+        SELECT 
+          date(timestamp/1000, 'unixepoch') as date,
+          ROUND(AVG(battery_percent), 1) as avgBattery,
+          MIN(battery_percent) as minBattery,
+          MAX(battery_percent) as maxBattery,
+          COUNT(*) as samples
+        FROM snapshots
+        WHERE timestamp > (strftime('%s', 'now') - 2592000) * 1000
+        GROUP BY date
+        ORDER BY date DESC
+        LIMIT 30
+      `).all();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows.map(r => ({
+        date: r.date,
+        avgDrainRate: null,
+        avgBattery: r.avgBattery,
+        minBattery: r.minBattery,
+        maxBattery: r.maxBattery,
+        samples: r.samples
+      }))));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/analysis/top-battery-impact') {
+    try {
+      const rows = db.db.prepare(`
+        SELECT 
+          process_name as name,
+          total_impact_score as totalImpact,
+          samples_during_drain as events,
+          ROUND(avg_cpu_during_drain, 2) as avgImpact
+        FROM battery_impact
+        ORDER BY total_impact_score DESC
+        LIMIT 20
+      `).all();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/analysis/spike-patterns') {
+    try {
+      const rows = db.db.prepare(`
+        SELECT 
+          process_name as name,
+          SUM(CASE WHEN metric_type = 'cpu' THEN 1 ELSE 0 END) as cpuSpikes,
+          SUM(CASE WHEN metric_type = 'memory' THEN 1 ELSE 0 END) as memSpikes,
+          COUNT(*) as totalSpikes,
+          ROUND(AVG(value), 1) as avgCpu
+        FROM process_spikes
+        GROUP BY process_name
+        ORDER BY totalSpikes DESC
+        LIMIT 20
+      `).all();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows.map(r => ({
+        name: r.name,
+        cpuSpikes: r.cpuSpikes,
+        memSpikes: r.memSpikes,
+        totalSpikes: r.totalSpikes,
+        avgCpu: r.avgCpu
+      }))));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/analysis/drain-correlation') {
+    try {
+      const rows = db.db.prepare(`
+        SELECT 
+          ps.name,
+          COUNT(DISTINCT de.id) as drainEvents,
+          ROUND(SUM(ps.cpu_percent), 1) as totalCpu,
+          ROUND(AVG(ps.cpu_percent), 1) as avgCpu,
+          ROUND(COUNT(DISTINCT de.id) * 100.0 / NULLIF((SELECT COUNT(*) FROM drain_events), 0), 1) as frequency
+        FROM process_samples ps
+        JOIN snapshots s ON ps.snapshot_id = s.id
+        JOIN drain_events de ON s.timestamp BETWEEN de.start_time AND de.end_time
+        GROUP BY ps.name
+        ORDER BY drainEvents DESC, totalCpu DESC
+        LIMIT 20
+      `).all();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/analysis/idle-active') {
+    try {
+      const rows = db.db.prepare(`
+        SELECT 
+          CAST(strftime('%H', timestamp/1000, 'unixepoch') AS INTEGER) as hour,
+          ROUND(AVG(cpu_total), 1) as avgCpu,
+          ROUND(AVG(battery_percent), 1) as avgBattery,
+          COUNT(*) as samples,
+          CASE 
+            WHEN AVG(cpu_total) > 30 THEN 'high'
+            WHEN AVG(cpu_total) > 10 THEN 'medium'
+            ELSE 'low'
+          END as activityLevel
+        FROM snapshots
+        WHERE timestamp > (strftime('%s', 'now') - 604800) * 1000
+        GROUP BY hour
+        ORDER BY hour
+      `).all();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows.map(r => ({
+        hour: r.hour,
+        avgCpu: r.avgCpu,
+        avgBattery: r.avgBattery,
+        samples: r.samples,
+        activityLevel: r.activityLevel
+      }))));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/analysis/process-stats') {
+    try {
+      const rows = db.db.prepare(`
+        SELECT 
+          ps.name,
+          ROUND(AVG(ps.cpu_percent), 1) as avgCpu,
+          ROUND(MAX(ps.cpu_percent), 1) as peakCpu,
+          CASE 
+            WHEN COUNT(*) > 1 THEN 
+              ROUND(SQRT((SUM(ps.cpu_percent * ps.cpu_percent) - SUM(ps.cpu_percent)*SUM(ps.cpu_percent)/COUNT(*)) / (COUNT(*) - 1)), 2)
+            ELSE 0 
+          END as stdCpu,
+          COUNT(*) as samples
+        FROM process_samples ps
+        JOIN snapshots s ON ps.snapshot_id = s.id
+        WHERE s.timestamp > (strftime('%s', 'now') - 604800) * 1000
+        GROUP BY ps.name
+        HAVING COUNT(*) > 5
+        ORDER BY avgCpu DESC
+        LIMIT 20
+      `).all();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(rows.map(r => ({
+        name: r.name,
+        avgCpu: r.avgCpu,
+        peakCpu: r.peakCpu,
+        stdCpu: r.stdCpu,
+        samples: r.samples
+      }))));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/db-size') {
+    try {
+      const stats = db.getStats();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ sizeMB: (stats.dbSizeBytes / (1024 * 1024)).toFixed(2) }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/server-info') {
+    try {
+      const uptime = process.uptime();
+      const hours = Math.floor(uptime / 3600);
+      const minutes = Math.floor((uptime % 3600) / 60);
+      const uptimeStr = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ uptime, uptimeStr }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/restart' && req.method === 'POST') {
+    try {
+      // Spawn monitor restart in background
+      const { exec } = require('child_process');
+      exec('pkill -f "tsx.*src/main.ts" && sleep 2 && cd /Users/sage/.openclaw/workspace/code/mac-process-monitor && bash run.sh > logs/monitor.log 2> logs/monitor-error.log &', {
+        env: { ...process.env, HOME: '/Users/sage' }
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: 'Monitor restart initiated. It will be back online in ~5 seconds.' }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: (err as Error).message }));

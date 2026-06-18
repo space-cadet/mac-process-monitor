@@ -27,220 +27,342 @@
       </div>
     </header>
 
-    <div class="kpi-grid">
-      <div class="kpi-card battery">
-        <div class="kpi-label">Battery</div>
-        <div class="kpi-value" id="batteryValue">--<span>%</span></div>
-        <div class="battery-visual">
-          <div class="battery-body">
-            <div class="battery-fill" id="batteryFill"></div>
+    <!-- Main Tab Navigation -->
+    <nav class="main-tabs">
+      <button class="main-tab active" data-tab="overview" onclick="switchMainTab('overview')">
+        <span class="tab-icon">📊</span> Overview
+      </button>
+      <button class="main-tab" data-tab="analysis" onclick="switchMainTab('analysis')">
+        <span class="tab-icon">🔍</span> Analysis
+      </button>
+      <button class="main-tab" data-tab="settings" onclick="switchMainTab('settings')">
+        <span class="tab-icon">⚙️</span> Settings
+      </button>
+    </nav>
+
+    <!-- ─── OVERVIEW TAB ─── -->
+    <div class="tab-content active" id="overviewTab">
+      <div class="kpi-grid">
+        <div class="kpi-card battery">
+          <div class="kpi-label">Battery</div>
+          <div class="kpi-value" id="batteryValue">--<span>%</span></div>
+          <div class="battery-visual">
+            <div class="battery-body">
+              <div class="battery-fill" id="batteryFill"></div>
+            </div>
+            <span id="batteryStatus" style="font-size: 12px; color: var(--text-dim);">--</span>
           </div>
-          <span id="batteryStatus" style="font-size: 12px; color: var(--text-dim);">--</span>
+          <div class="kpi-detail" id="batteryDetail">--</div>
         </div>
-        <div class="kpi-detail" id="batteryDetail">--</div>
-      </div>
 
-      <div class="kpi-card cpu">
-        <div class="kpi-label">CPU Total</div>
-        <div class="kpi-value" id="cpuValue">--<span>%</span></div>
-        <div class="kpi-trend" id="cpuTrend">
-          <span>◆</span> <span id="cpuTrendText">--</span>
+        <div class="kpi-card cpu">
+          <div class="kpi-label">CPU Total</div>
+          <div class="kpi-value" id="cpuValue">--<span>%</span></div>
+          <div class="kpi-trend" id="cpuTrend">
+            <span>◆</span> <span id="cpuTrendText">--</span>
+          </div>
+          <div class="kpi-detail" id="cpuDetail">--</div>
         </div>
-        <div class="kpi-detail" id="cpuDetail">--</div>
-      </div>
 
-      <div class="kpi-card memory">
-        <div class="kpi-label">Memory</div>
-        <div class="kpi-value" id="memValue">--<span>GB</span></div>
-        <div class="kpi-value" style="font-size: 18px; color: var(--text-dim); margin-top: -4px;" id="memPercent">--</div>
-        <div class="kpi-detail" id="memDetail">--</div>
-      </div>
-
-      <div class="kpi-card status">
-        <div class="kpi-label">Status</div>
-        <div class="kpi-value" style="font-size: 24px; margin-top: 6px;" id="statusValue">--</div>
-        <div class="kpi-trend" id="statusTrend">
-          <span>◆</span> <span id="statusTrendText">--</span>
+        <div class="kpi-card memory">
+          <div class="kpi-label">Memory</div>
+          <div class="kpi-value" id="memValue">--<span>GB</span></div>
+          <div class="kpi-value" style="font-size: 18px; color: var(--text-dim); margin-top: -4px;" id="memPercent">--</div>
+          <div class="kpi-detail" id="memDetail">--</div>
         </div>
-        <div class="kpi-detail" id="statusDetail">--</div>
-      </div>
-    </div>
 
-    <div class="main-grid">
+        <div class="kpi-card status">
+          <div class="kpi-label">Status</div>
+          <div class="kpi-value" style="font-size: 24px; margin-top: 6px;" id="statusValue">--</div>
+          <div class="kpi-trend" id="statusTrend">
+            <span>◆</span> <span id="statusTrendText">--</span>
+          </div>
+          <div class="kpi-detail" id="statusDetail">--</div>
+        </div>
+      </div>
+
+      <div class="main-grid">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Top Processes</div>
+            <div class="panel-actions" id="processPanelActions"></div>
+          </div>
+          <div class="table-wrapper">
+            <table class="process-table">
+              <thead>
+                <tr>
+                  <th onclick="sortByColumn('process')" style="cursor: pointer;">Process</th>
+                  <th onclick="sortByColumn('pid')" style="cursor: pointer;">PID</th>
+                  <th onclick="sortByColumn('cpu')" style="cursor: pointer;">CPU</th>
+                  <th onclick="sortByColumn('memory')" style="cursor: pointer;">Memory</th>
+                </tr>
+              </thead>
+              <tbody id="processTable">
+                <tr><td colspan="4" style="text-align: center; color: var(--text-dim);">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="chart-tabs">
+              <button class="chart-tab active" data-tab="battery" onclick="switchChartTab('battery')">Battery</button>
+              <button class="chart-tab" data-tab="cpu" onclick="switchChartTab('cpu')">CPU</button>
+              <button class="chart-tab" data-tab="memory" onclick="switchChartTab('memory')">Memory</button>
+            </div>
+            <div class="panel-actions">
+              <button class="panel-btn active" onclick="loadHistory(60, this)">1h</button>
+              <button class="panel-btn" onclick="loadHistory(360, this)">6h</button>
+              <button class="panel-btn" onclick="loadHistory(1440, this)">24h</button>
+            </div>
+          </div>
+          <div class="chart-wrapper">
+            <div class="chart-y-axis" id="chartYAxis">
+              <span>100%</span>
+              <span>75%</span>
+              <span>50%</span>
+              <span>25%</span>
+              <span>0%</span>
+            </div>
+            <div class="chart-area">
+              <div class="chart-gridlines">
+                <div class="gridline"></div>
+                <div class="gridline"></div>
+                <div class="gridline"></div>
+                <div class="gridline"></div>
+                <div class="gridline"></div>
+              </div>
+              <svg class="chart-svg" id="historyChart" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="var(--accent-battery)" stop-opacity="0.3"/>
+                    <stop offset="100%" stop-color="var(--accent-battery)" stop-opacity="0"/>
+                  </linearGradient>
+                </defs>
+                <path class="chart-area-fill" id="chartAreaFill" d="" fill="url(#lineGradient)"/>
+                <path class="chart-line" id="chartLine" d="" fill="none" stroke="var(--accent-battery)" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
+                <g id="chartPoints"></g>
+              </svg>
+            </div>
+          </div>
+          <div class="chart-x-axis" id="chartXAxis"></div>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Top Processes</div>
-          <div class="panel-actions" id="processPanelActions"></div>
-        </div>
-        <div class="table-wrapper">
-          <table class="process-table">
-            <thead>
-              <tr>
-                <th onclick="sortByColumn('process')" style="cursor: pointer;">Process</th>
-                <th onclick="sortByColumn('pid')" style="cursor: pointer;">PID</th>
-                <th onclick="sortByColumn('cpu')" style="cursor: pointer;">CPU</th>
-                <th onclick="sortByColumn('memory')" style="cursor: pointer;">Memory</th>
-              </tr>
-            </thead>
-            <tbody id="processTable">
-              <tr><td colspan="4" style="text-align: center; color: var(--text-dim);">Loading...</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">
-          <div class="chart-tabs">
-            <button class="chart-tab active" data-tab="battery" onclick="switchChartTab('battery')">Battery</button>
-            <button class="chart-tab" data-tab="cpu" onclick="switchChartTab('cpu')">CPU</button>
-            <button class="chart-tab" data-tab="memory" onclick="switchChartTab('memory')">Memory</button>
-          </div>
+          <div class="panel-title" style="--panel-accent: var(--accent-drain);">Recent Drain Events</div>
           <div class="panel-actions">
-            <button class="panel-btn active" onclick="loadHistory(60, this)">1h</button>
-            <button class="panel-btn" onclick="loadHistory(360, this)">6h</button>
-            <button class="panel-btn" onclick="loadHistory(1440, this)">24h</button>
+            <button class="panel-btn" onclick="exportCSV()">Export CSV</button>
           </div>
         </div>
-        <div class="chart-wrapper">
-          <div class="chart-y-axis" id="chartYAxis">
-            <span>100%</span>
-            <span>75%</span>
-            <span>50%</span>
-            <span>25%</span>
-            <span>0%</span>
-          </div>
-          <div class="chart-area">
-            <div class="chart-gridlines">
-              <div class="gridline"></div>
-              <div class="gridline"></div>
-              <div class="gridline"></div>
-              <div class="gridline"></div>
-              <div class="gridline"></div>
-            </div>
-            <svg class="chart-svg" id="historyChart" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="lineGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="var(--accent-battery)" stop-opacity="0.3"/>
-                  <stop offset="100%" stop-color="var(--accent-battery)" stop-opacity="0"/>
-                </linearGradient>
-              </defs>
-              <path class="chart-area-fill" id="chartAreaFill" d="" fill="url(#lineGradient)"/>
-              <path class="chart-line" id="chartLine" d="" fill="none" stroke="var(--accent-battery)" stroke-width="0.5" vector-effect="non-scaling-stroke"/>
-              <g id="chartPoints"></g>
-            </svg>
+        <div class="drain-list" id="drainList">
+          <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading...</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Monitoring Profiles</div>
+          <div class="panel-actions">
+            <button class="panel-btn" onclick="showProfileModal()">+ New Profile</button>
           </div>
         </div>
-        <div class="chart-x-axis" id="chartXAxis"></div>
+        <div class="profile-list" id="profileList">
+          <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading profiles...</div>
+        </div>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title" style="--panel-accent: var(--accent-drain);">Recent Drain Events</div>
-        <div class="panel-actions">
-          <button class="panel-btn" onclick="exportCSV()">Export CSV</button>
+    <!-- ─── ANALYSIS TAB ─── -->
+    <div class="tab-content" id="analysisTab">
+      <div class="analysis-layout">
+        <!-- Sidebar: Quick Stats + Query presets -->
+        <div class="analysis-sidebar">
+          <div class="panel" style="margin-bottom: 16px;">
+            <div class="panel-header">
+              <div class="panel-title" style="--panel-accent: var(--accent-ok);">📊 Quick Stats</div>
+            </div>
+            <div class="quick-stats" id="quickStats">
+              <div class="quick-stat">
+                <div class="quick-stat-value" id="qsTotalSamples">--</div>
+                <div class="quick-stat-label">Total Samples</div>
+              </div>
+              <div class="quick-stat">
+                <div class="quick-stat-value" id="qsTotalDrains">--</div>
+                <div class="quick-stat-label">Drain Events</div>
+              </div>
+              <div class="quick-stat">
+                <div class="quick-stat-value" id="qsTotalSpikes">--</div>
+                <div class="quick-stat-label">Spikes Detected</div>
+              </div>
+              <div class="quick-stat">
+                <div class="quick-stat-value" id="qsUptime">--</div>
+                <div class="quick-stat-label">Days Logged</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title" style="--panel-accent: var(--accent-mem);">📋 Preset Queries</div>
+            </div>
+            <div class="preset-list">
+              <button class="preset-btn" onclick="runPresetQuery('batteryTrend')">
+                <span class="preset-icon">🔋</span>
+                <div class="preset-info">
+                  <div class="preset-name">Battery Trend</div>
+                  <div class="preset-desc">Avg drain rate per day</div>
+                </div>
+              </button>
+              <button class="preset-btn" onclick="runPresetQuery('topBatteryImpact')">
+                <span class="preset-icon">⚡</span>
+                <div class="preset-info">
+                  <div class="preset-name">Top Battery Impact</div>
+                  <div class="preset-desc">Processes with highest drain</div>
+                </div>
+              </button>
+              <button class="preset-btn" onclick="runPresetQuery('spikePatterns')">
+                <span class="preset-icon">📈</span>
+                <div class="preset-info">
+                  <div class="preset-name">Spike Patterns</div>
+                  <div class="preset-desc">CPU/memory spike frequency</div>
+                </div>
+              </button>
+              <button class="preset-btn" onclick="runPresetQuery('drainCorrelation')">
+                <span class="preset-icon">🔗</span>
+                <div class="preset-info">
+                  <div class="preset-name">Drain Correlation</div>
+                  <div class="preset-desc">Processes during drain events</div>
+                </div>
+              </button>
+              <button class="preset-btn" onclick="runPresetQuery('idleVsActive')">
+                <span class="preset-icon">🌙</span>
+                <div class="preset-info">
+                  <div class="preset-name">Idle vs Active</div>
+                  <div class="preset-desc">Usage patterns by hour</div>
+                </div>
+              </button>
+              <button class="preset-btn" onclick="runPresetQuery('processConsistency')">
+                <span class="preset-icon">🎯</span>
+                <div class="preset-info">
+                  <div class="preset-name">Process Consistency</div>
+                  <div class="preset-desc">Avg/peak/stdev per process</div>
+                </div>
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
-      <div class="drain-list" id="drainList">
-        <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading...</div>
+
+        <!-- Main: Results area -->
+        <div class="analysis-main">
+          <div class="panel" id="analysisResultsPanel">
+            <div class="panel-header">
+              <div class="panel-title" style="--panel-accent: var(--accent-cpu);" id="analysisTitle">Results</div>
+              <div class="panel-actions">
+                <button class="panel-btn" onclick="exportAnalysisJSON()">Export JSON</button>
+                <button class="panel-btn" onclick="exportAnalysisCSV()">Export CSV</button>
+              </div>
+            </div>
+            <div class="analysis-content" id="analysisContent">
+              <div class="analysis-placeholder">
+                <div class="placeholder-icon">🔍</div>
+                <h3>Select a preset query from the sidebar</h3>
+                <p>Or run a custom analysis using the buttons above.</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-header">
-        <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Monitoring Profiles</div>
-        <div class="panel-actions">
-          <button class="panel-btn" onclick="showProfileModal()">+ New Profile</button>
+    <!-- ─── SETTINGS TAB ─── -->
+    <div class="tab-content" id="settingsTab">
+      <div class="panel" id="settingsPanel">
+        <div class="panel-header">
+          <div class="panel-title" style="--panel-accent: #8b5cf6;">⚙️ Monitor Settings</div>
+          <div class="panel-actions">
+            <button class="panel-btn" onclick="restartMonitor()">🔄 Restart Monitor</button>
+            <button class="panel-btn primary" onclick="saveMonitorConfig()">💾 Save Config</button>
+          </div>
         </div>
-      </div>
-      <div class="profile-list" id="profileList">
-        <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading profiles...</div>
-      </div>
-    </div>
+        <div class="settings-content" id="settingsContent">
+          <div class="settings-section">
+            <h4>Database</h4>
+            <div class="settings-row">
+              <div class="settings-info">
+                <div class="settings-label">Current Size</div>
+                <div class="settings-value" id="settingsDbSize">--</div>
+              </div>
+              <div class="settings-info">
+                <div class="settings-label">Total Snapshots</div>
+                <div class="settings-value" id="settingsSnapshots">--</div>
+              </div>
+              <div class="settings-info">
+                <div class="settings-label">Oldest Record</div>
+                <div class="settings-value" id="settingsOldest">--</div>
+              </div>
+            </div>
+            <div class="settings-row" style="margin-top: 16px; align-items: flex-end;">
+              <div class="settings-input-group">
+                <label for="retentionDays">Max age (days)</label>
+                <input type="number" id="retentionDays" value="30" min="1" max="365">
+              </div>
+              <div class="settings-input-group">
+                <label for="retentionSizeMB">Max size (MB)</label>
+                <input type="number" id="retentionSizeMB" value="400" min="50" max="5000">
+              </div>
+              <button class="panel-btn danger" onclick="confirmCleanup()" id="cleanupBtn">🗑 Clean Old Data</button>
+            </div>
+            <div class="settings-hint">Cleanup triggers when EITHER threshold is exceeded</div>
+            <div class="settings-result" id="cleanupResult" style="display: none;"></div>
+          </div>
 
-    <div class="panel" id="settingsPanel">
-      <div class="panel-header">
-        <div class="panel-title" style="--panel-accent: #8b5cf6;">⚙️ Settings</div>
-        <div class="panel-actions">
-          <button class="panel-btn primary" onclick="saveMonitorConfig()">💾 Save Config</button>
-        </div>
-      </div>
-      <div class="settings-content" id="settingsContent">
-        <div class="settings-section">
-          <h4>Database</h4>
-          <div class="settings-row">
-            <div class="settings-info">
-              <div class="settings-label">Current Size</div>
-              <div class="settings-value" id="settingsDbSize">--</div>
+          <div class="settings-section">
+            <h4>Logging</h4>
+            <div class="settings-row">
+              <div class="settings-input-group">
+                <label for="sampleInterval">Sample interval (seconds)</label>
+                <input type="number" id="sampleInterval" value="30" min="10" max="300">
+              </div>
             </div>
-            <div class="settings-info">
-              <div class="settings-label">Total Snapshots</div>
-              <div class="settings-value" id="settingsSnapshots">--</div>
-            </div>
-            <div class="settings-info">
-              <div class="settings-label">Oldest Record</div>
-              <div class="settings-value" id="settingsOldest">--</div>
+            <div class="settings-row" style="margin-top: 12px;">
+              <label class="settings-checkbox">
+                <input type="checkbox" id="logBattery" checked>
+                <span>Log battery & system metrics</span>
+              </label>
+              <label class="settings-checkbox">
+                <input type="checkbox" id="logProcesses" checked>
+                <span>Log process samples</span>
+              </label>
+              <label class="settings-checkbox">
+                <input type="checkbox" id="logSpikes" checked>
+                <span>Detect & log CPU/memory spikes</span>
+              </label>
+              <label class="settings-checkbox">
+                <input type="checkbox" id="logBatteryImpact" checked>
+                <span>Track battery impact per process</span>
+              </label>
             </div>
           </div>
-          <div class="settings-row" style="margin-top: 16px; align-items: flex-end;">
-            <div class="settings-input-group">
-              <label for="retentionDays">Max age (days)</label>
-              <input type="number" id="retentionDays" value="30" min="1" max="365">
-            </div>
-            <div class="settings-input-group">
-              <label for="retentionSizeMB">Max size (MB)</label>
-              <input type="number" id="retentionSizeMB" value="400" min="50" max="5000">
-            </div>
-            <button class="panel-btn danger" onclick="runCleanup()" id="cleanupBtn">🗑 Clean Old Data</button>
-          </div>
-          <div class="settings-hint">Cleanup triggers when EITHER threshold is exceeded</div>
-          <div class="settings-result" id="cleanupResult" style="display: none;"></div>
-        </div>
 
-        <div class="settings-section">
-          <h4>Logging</h4>
-          <div class="settings-row">
-            <div class="settings-input-group">
-              <label for="sampleInterval">Sample interval (seconds)</label>
-              <input type="number" id="sampleInterval" value="30" min="10" max="300">
+          <div class="settings-section">
+            <h4>Dashboard Auto-refresh</h4>
+            <div class="settings-row">
+              <div class="settings-input-group">
+                <label for="refreshIntervalInput">Interval (seconds)</label>
+                <input type="number" id="refreshIntervalInput" value="5" min="1" max="60">
+              </div>
+              <button class="panel-btn" onclick="saveRefreshInterval()">Apply</button>
             </div>
           </div>
-          <div class="settings-row" style="margin-top: 12px;">
-            <label class="settings-checkbox">
-              <input type="checkbox" id="logBattery" checked>
-              <span>Log battery & system metrics</span>
-            </label>
-            <label class="settings-checkbox">
-              <input type="checkbox" id="logProcesses" checked>
-              <span>Log process samples</span>
-            </label>
-            <label class="settings-checkbox">
-              <input type="checkbox" id="logSpikes" checked>
-              <span>Detect & log CPU/memory spikes</span>
-            </label>
-            <label class="settings-checkbox">
-              <input type="checkbox" id="logBatteryImpact" checked>
-              <span>Track battery impact per process</span>
-            </label>
-          </div>
-        </div>
 
-        <div class="settings-section">
-          <h4>Dashboard Auto-refresh</h4>
-          <div class="settings-row">
-            <div class="settings-input-group">
-              <label for="refreshIntervalInput">Interval (seconds)</label>
-              <input type="number" id="refreshIntervalInput" value="5" min="1" max="60">
+          <div class="settings-section">
+            <div class="settings-restart-notice" id="restartNotice" style="display: none;">
+              ⚠️ Config saved! Restart the monitor to apply changes.
+              <code>cd ~/.openclaw/workspace/code/mac-process-monitor && bash run.sh</code>
             </div>
-            <button class="panel-btn" onclick="saveRefreshInterval()">Apply</button>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-restart-notice" id="restartNotice" style="display: none;">
-            ⚠️ Config saved! Restart the monitor to apply changes.
-            <code>cd ~/.openclaw/workspace/code/mac-process-monitor && bash run.sh</code>
           </div>
         </div>
       </div>
@@ -303,7 +425,6 @@
     </div>
   </div>
 
-  <script>window.__inlineTest = 'works'; console.log('Inline script executed');</script>
-  <script src="app.js?v=3"></script>
+  <script src="app.js?v=5"></script>
 </body>
 </html>

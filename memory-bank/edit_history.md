@@ -1,6 +1,30 @@
 # Edit History
 
-*Last Updated: 2026-06-18 02:24 IST*
+*Last Updated: 2026-06-19 00:52 IST*
+
+---
+
+## 2026-06-19
+
+#### 00:52 IST - T4: Dashboard Analysis & Settings Tabs
+
+**Dashboard v3: Three-Tab Redesign**
+- Modified `src/web/server.ts` — Added 6 analysis API endpoints (`/api/analysis/*`), `/api/db-size`, `/api/server-info`, `/api/restart`
+- Modified `web/public/index.html` — Restructured into 3 tabs (Overview, Analysis, Settings); Quick Stats moved above preset queries; added restart button and confirmation dialog
+- Modified `web/public/app.js` — Tab switching, preset query handlers, analysis result rendering, JSON/CSV export, quick stats loading
+- Modified `web/public/styles.css` — Main tab styles, analysis layout, preset buttons, quick stats, analysis tables, activity badges
+- Modified `check-and-start.sh` — Auto-start both monitor and dashboard if either is down
+- Fixed SQL queries for SQLite3 compatibility (removed `LAG()` window functions, added `JOIN snapshots` for time filtering)
+
+**Analysis Tab Features**
+- 6 preset queries: Battery Trend, Top Battery Impact, Spike Patterns, Drain Correlation, Idle vs Active, Process Consistency
+- Quick stats panel: total samples, drain events, spikes, days logged
+- JSON and CSV export for query results
+
+**Settings Tab Features**
+- Restart Monitor button (`/api/restart` endpoint)
+- Confirmation dialog before cleanup (`confirm()` with retention days)
+- Config management, logging toggles, cleanup, auto-refresh interval
 
 ---
 

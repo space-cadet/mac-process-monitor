@@ -1,39 +1,37 @@
 # Active Context
 
-*Last Updated: 2026-06-15 07:45 IST*
+*Last Updated: 2026-06-19 00:52 IST*
 
 ## Current Tasks
 
-No active tasks. All core features (T1, T3, T4, T6, T7, T8) are complete. Only T2 (alerting) and T5 (Swift menubar) remain pending.
+### 🔥 T4: Dashboard Extended — Analysis + Settings Tabs (In Progress / Extended)
+Added 2026-06-19. Three-tab dashboard: Overview, Analysis, Settings.
+
+**Completed:**
+- **Analysis Tab**: 6 preset SQL queries (Battery Trend, Top Battery Impact, Spike Patterns, Drain Correlation, Idle vs Active, Process Consistency), quick stats panel, JSON/CSV export
+- **Settings Tab**: Restart monitor button, confirmation dialog for cleanup, config management, logging toggles
+- **Cron fix**: Auto-starts both monitor AND dashboard if either goes down
+- **API additions**: 9 new endpoints (`/api/analysis/*`, `/api/db-size`, `/api/server-info`, `/api/restart`)
 
 ## Completed Tasks (Recent)
-- **T8: LaunchDaemon Installation for Auto-Start** (2026-06-15) — Two LaunchDaemons installed and running: `ai.openclaw.procmon.monitor` (PID 53211) and `ai.openclaw.procmon.dashboard` (PID 57453). Auto-start on boot confirmed. Old conflicting plist (`com.mac-process-monitor.dashboard.plist`) removed.
-- **T6: Process Spike Detection** (2026-06-09) — Per-process baseline tracking, dual-threshold detection, DB storage, CLI queries, dashboard integration
-- **T7: Battery Impact Correlation** (2026-06-09) — Drain period detection, per-process impact scoring, accumulated rankings, CLI + dashboard
-- **T4: Web Dashboard Rebuild** (2026-06-10) — Modular 7-file frontend, side-by-side layout, sortable columns, process modal, spike panel, battery impact panel, profiles CRUD, 12 API endpoints
-- **T3: Per-Process Query Interface** (2026-06-10) — CLI tool with `--spikes`, `--battery`, `--top`, `--process`, `--stats` options, all exposed via dashboard API
+- **T4-ext: Dashboard v3** (2026-06-19) — Analysis tab with 6 preset queries, Settings tab with restart/cleanup, 3-tab navigation, cache-busted frontend
+- **T2: Telegram/OpenClaw Alert Integration** (2026-06-18) — AlertSender, wired into Monitor, macOS notifications tested
+- **T8: LaunchDaemon Installation** (2026-06-15) — Two LaunchDaemons, auto-start on boot
+- **T6: Spike Detection** (2026-06-09) — Baseline tracking, dual-threshold, DB storage, CLI + dashboard
+- **T7: Battery Impact** (2026-06-09) — Drain detection, impact scoring, CLI + dashboard
+- **T4: Web Dashboard v2** (2026-06-10) — Side-by-side layout, 12 API endpoints, profiles CRUD
+- **T3: Query Interface** (2026-06-10) — CLI with `--spikes`, `--battery`, `--top`, `--process`, `--stats`
 
 ## Next Steps
-- **T2: Telegram/OpenClaw Alert Integration** — Wire `Monitor.sendAlert()` to actually dispatch messages via OpenClaw message tool or Telegram bot
-- **T5: Swift Menubar App** — Port proven TypeScript logic to Swift after T2 stable
+- **T9: Sleep/Wake Correlation** — HIGH priority, biggest blind spot
+- **T10: Automated Daily Report** — Builds on analysis endpoints already in place
+- **T16: Native Notifications** — Replace osascript with UNUserNotificationCenter
 
 ## System Status
 - **Battery**: Varies (monitoring active)
 - **Memory**: Normal
-- **DB**: `~/.procmon/monitor.db` with 6 tables: snapshots, process_samples, drain_events, process_spikes, battery_impact, battery_impact_events
-- **Dashboard**: Running on http://localhost:3456 (auto-refresh every 5s)
-- **Monitor**: Running via LaunchDaemon (PID 53211)
+- **DB**: `~/.procmon/monitor.db` — ~90+ MB, 17K+ snapshots, 750K+ process samples
+- **Dashboard**: Running on http://localhost:3456 with 3 tabs (Overview, Analysis, Settings)
+- **Monitor**: Running via LaunchDaemon + cron check every 10 minutes
 - **GitHub Repo**: https://github.com/space-cadet/mac-process-monitor (public, 27 commits)
-- **Git Status**: Workspace copy aligned with remote. User's canonical copy (`/Users/deepak/code/mac-process-monitor`) needs `git pull` to sync latest commit.
-
-## Recent Incident (2026-06-15)
-
-**Git history goof-up**: During alignment check, I used `git clone --depth 1` and temporarily replaced the workspace directory with a shallow clone. Full history recovered. Lesson: never use `--depth 1` for alignment checks. Workspace copy is now a proper git repo with 27 commits.
-
-## Workspace vs. Canonical Copy
-
-**Workspace copy** (`~/.openclaw/workspace/code/mac-process-monitor`): My working copy. Has all features. Full git repo.
-
-**Canonical copy** (`/Users/deepak/code/mac-process-monitor`): User's copy. Has 26 commits. Needs `git pull` to get latest T6/T7 commit.
-
-**Rule per TOOLS.md**: User's canonical repos are in `~/code/`. Workspace is for Sage's personal/transient work only. In this case, the workspace copy had newer T6/T7 code that needed to be committed to the repo.
+- **Git Status**: Uncommitted changes from dashboard v3 work

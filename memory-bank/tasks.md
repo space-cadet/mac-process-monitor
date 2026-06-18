@@ -1,7 +1,7 @@
 # Memory Bank - mac-process-monitor Tasks
 
 *Created: 2026-05-25*
-*Last Updated: 2026-06-18*
+*Last Updated: 2026-06-19*
 
 ## Overview
 
@@ -20,7 +20,7 @@ Task tracking for the mac-process-monitor project. Tasks are ordered by priority
 |----|-------|-----------|---------|
 | T1 | TypeScript Rewrite — Core Monitor | 2026-05-18 | [Details](tasks/T1.md) |
 | T3 | Per-Process History Query Interface | 2026-06-10 | [Details](tasks/T3.md) |
-| T4 | Web Dashboard for Live Monitoring | 2026-06-10 | [Details](tasks/T4.md) |
+| T4 | Web Dashboard for Live Monitoring | 2026-06-10 | Extended 2026-06-19 with Analysis + Settings tabs, 6 preset SQL queries, export features | [Details](tasks/T4.md) |
 | T6 | Process Spike Detection | 2026-06-09 | [Details](tasks/T6.md) |
 | T7 | Battery Impact Correlation | 2026-06-09 | [Details](tasks/T7.md) |
 | T8 | LaunchDaemon Installation for Auto-Start | 2026-06-15 | [Details](tasks/T8.md) |
