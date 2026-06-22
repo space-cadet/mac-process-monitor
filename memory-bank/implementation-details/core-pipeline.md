@@ -1,15 +1,19 @@
 # Implementation Details: Core Monitoring Pipeline
 
-*Last Updated: 2026-05-19 14:42 IST*
+*Last Updated: 2026-06-22 18:15 IST*
 
 ## Table of Contents
 1. [SystemCollector Design](#systemcollector-design)
 2. [DrainAnalyzer Design](#drainanalyzer-design)
-3. [TimeSeriesDB Design](#timeseriesdb-design)
-4. [Monitor Orchestrator](#monitor-orchestrator)
-5. [Type System](#type-system)
-6. [ESM Import Conventions](#esm-import-conventions)
-7. [Known Quirks](#known-quirks)
+3. [SpikeDetector Design](#spikedetector-design)
+4. [BatteryImpactAnalyzer Design](#batteryimpactanalyzer-design)
+5. [AlertSender Design](#alertsender-design)
+6. [ConfigManager Design](#configmanager-design)
+7. [TimeSeriesDB Design](#timeseriesdb-design)
+8. [Monitor Orchestrator](#monitor-orchestrator)
+9. [Type System](#type-system)
+10. [ESM Import Conventions](#esm-import-conventions)
+11. [Known Quirks](#known-quirks)
 
 ---
 
@@ -73,6 +77,17 @@ constructor(windowMinutes: number = 5, sampleIntervalSeconds: number = 30) {
 ```
 The `+ 1` ensures the window always has enough samples even with slight timing jitter.
 
+### Configuration (v4 — Adjustable via Settings)
+```typescript
+interface AlertConfig {
+  drainThreshold: number;    // % per minute (default: 0.5, was 1.0)
+  minDuration: number;       // minutes (default: 1, was 2)
+  cooldownMinutes: number;   // minutes (default: 5, was 10)
+}
+```
+
+More sensitive defaults (0.5%/min, 1min, 5min cooldown) capture more drain events without excessive noise.
+
 ### Analysis Algorithm (`analyze()`)
 1. **Cooldown check**: `now - lastAlertTime < cooldownMs` → return null
 2. **Charging check**: `newest.battery.isCharging || newest.battery.isPlugged` → return null
@@ -88,6 +103,157 @@ The `+ 1` ensures the window always has enough samples even with slight timing j
 4. Sort descending, return top 5
 
 **Limitation**: PID reuse within a 5-minute window is rare but possible. Two different processes could share a PID if one exited and another started. This is a known limitation; cross-window identity is not guaranteed.
+
+---
+
+## SpikeDetector Design
+
+### Responsibility
+Detect per-process CPU and memory spikes by tracking baselines and comparing current values against both absolute and relative thresholds.
+
+### Baseline Tracking
+```typescript
+class SpikeDetector {
+  private baselines = new Map<number, { cpu: number; memory: number; lastSeen: number }>();
+  
+  updateBaseline(pid: number, cpu: number, memory: number) {
+    const existing = this.baselines.get(pid);
+    if (existing) {
+      // Exponential moving average: new = 0.7 * old + 0.3 * current
+      existing.cpu = existing.cpu * 0.7 + cpu * 0.3;
+      existing.memory = existing.memory * 0.7 + memory * 0.3;
+      existing.lastSeen = Date.now();
+    } else {
+      this.baselines.set(pid, { cpu, memory, lastSeen: Date.now() });
+    }
+  }
+}
+```
+
+### Dual-Threshold Detection
+```typescript
+function detectSpike(process: ProcessSnapshot, baseline: Baseline): SpikeType | null {
+  // Absolute thresholds
+  const cpuSpike = process.cpuPercent > 50;  // Hard threshold
+  const memSpike = process.memoryPercent > 20;
+  
+  // Relative thresholds (vs baseline)
+  const cpuRelative = baseline.cpu > 0 && process.cpuPercent > baseline.cpu * 3;
+  const memRelative = baseline.memory > 0 && process.memoryPercent > baseline.memory * 3;
+  
+  if (cpuSpike || cpuRelative) return 'cpu';
+  if (memSpike || memRelative) return 'memory';
+  return null;
+}
+```
+
+### Cooldown
+Per-process cooldown prevents spam: once a spike is detected for a PID, that PID is ignored for 10 minutes.
+
+---
+
+## BatteryImpactAnalyzer Design
+
+### Responsibility
+Correlate battery drain periods with process CPU usage to attribute drain to specific processes.
+
+### Algorithm
+1. When a drain event is detected, capture the time window `[start, end]`
+2. Query all `process_samples` within that window, joined with `snapshots`
+3. For each process:
+   - Sum `cpuPercent` across all samples (CPU-seconds)
+   - Count occurrences
+   - Compute average CPU
+4. Rank processes by total CPU-seconds
+5. Store in `battery_impact` table with `impactScore = cpuSeconds * durationMinutes`
+
+### Data Model
+```typescript
+interface BatteryImpact {
+  eventId: string;           // FK to drain_events.id
+  processName: string;
+  pid: number;
+  avgCpu: number;            // Average CPU % during drain
+  peakCpu: number;           // Peak CPU % during drain
+  cpuSeconds: number;        // Accumulated CPU-seconds
+  durationMinutes: number;   // How long the drain lasted
+  impactScore: number;       // cpuSeconds * durationMinutes
+}
+```
+
+---
+
+## AlertSender Design
+
+### Responsibility
+Send notifications when drain events, spikes, or battery impact events occur. Supports Telegram and macOS native notifications.
+
+### Channels
+1. **Telegram** — `node-telegram-bot-api` or direct Bot API HTTP calls
+2. **macOS Native** — `osascript -e 'display notification ...'`
+
+### Fallback Chain
+```typescript
+async sendAlert(message: string, event?: DrainEvent | SpikeEvent) {
+  // Try Telegram first
+  if (this.telegramToken) {
+    await this.sendTelegram(message);
+  }
+  // Always send macOS notification (local)
+  await this.sendMacOSNotification(message, event);
+}
+```
+
+### Cooldowns
+- Drain events: per-event (configurable via `cooldownMinutes`)
+- Spike events: per-process (10 minutes)
+- Battery impact: per-event (same as drain)
+
+---
+
+## ConfigManager Design
+
+### Responsibility
+Load and persist monitor configuration to `~/.procmon/config.json`. Provides defaults for all settings.
+
+### Default Config (v4)
+```typescript
+const DEFAULT_CONFIG = {
+  sampleInterval: 30,           // seconds
+  retentionDays: 30,            // days
+  maxSizeMB: 500,               // MB
+  logBattery: true,
+  logProcesses: true,
+  logSpikes: true,
+  logImpact: true,
+  alert: {
+    drainThreshold: 0.5,        // %/min (was 1.0)
+    minDuration: 1,             // minutes (was 2)
+    cooldownMinutes: 5,         // minutes (was 10)
+  },
+  web: {
+    port: 3456,
+    host: '0.0.0.0',
+  }
+};
+```
+
+### Persistence
+```typescript
+loadConfig(): MonitorConfig {
+  try {
+    const raw = fs.readFileSync(this.configPath, 'utf-8');
+    const saved = JSON.parse(raw);
+    return { ...DEFAULT_CONFIG, ...saved };  // Merge with defaults
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+saveConfig(config: MonitorConfig): void {
+  fs.writeFileSync(this.configPath, JSON.stringify(config, null, 2));
+}
+```
 
 ---
 
@@ -149,6 +315,46 @@ The `+ 1` ensures the window always has enough samples even with slight timing j
 | was_charging | INTEGER NOT NULL | 0/1 |
 | top_processes_json | TEXT NOT NULL | Serialized `ProcessSnapshot[]` |
 
+#### `process_spikes` — detected process spikes
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK AUTOINCREMENT | |
+| timestamp | INTEGER NOT NULL | |
+| pid | INTEGER NOT NULL | |
+| name | TEXT NOT NULL | |
+| type | TEXT NOT NULL | 'cpu' or 'memory' |
+| cpu_percent | REAL | |
+| memory_percent | REAL | |
+| baseline_cpu | REAL | |
+| baseline_memory | REAL | |
+
+#### `battery_impact` — per-process drain attribution
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK AUTOINCREMENT | |
+| event_id | TEXT NOT NULL | FK → drain_events.id |
+| process_name | TEXT NOT NULL | |
+| pid | INTEGER NOT NULL | |
+| avg_cpu | REAL NOT NULL | |
+| peak_cpu | REAL NOT NULL | |
+| cpu_seconds | REAL NOT NULL | |
+| duration_minutes | REAL NOT NULL | |
+| impact_score | REAL NOT NULL | |
+| timestamp | INTEGER NOT NULL | |
+
+#### `battery_impact_events` — summary of impact events
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK AUTOINCREMENT | |
+| event_id | TEXT NOT NULL | FK → drain_events.id |
+| start_time | INTEGER NOT NULL | |
+| end_time | INTEGER NOT NULL | |
+| start_percent | REAL NOT NULL | |
+| end_percent | REAL NOT NULL | |
+| drain_rate | REAL NOT NULL | |
+| duration_minutes | REAL NOT NULL | |
+| top_processes_json | TEXT | |
+
 ### Auto-Migration
 ```typescript
 private migrateSchema(): void {
@@ -186,6 +392,20 @@ insertProc(snapshot.processes);
 ```
 All process rows for a snapshot are written atomically.
 
+### Analysis Queries
+
+The DB provides dedicated methods for each analysis preset:
+```typescript
+getBatteryTrend(days: number): Array<{ date: string, avgBattery: number, minBattery: number, maxBattery: number, samples: number }>
+getTopBatteryImpact(limit: number): Array<{ processName: string, totalImpact: number, eventCount: number, avgCpu: number }>
+getSpikePatterns(days: number): Array<{ name: string, spikeCount: number, avgCpu: number, avgMem: number, firstSeen: string, lastSeen: string }>
+getDrainCorrelation(): Array<{ eventId: string, startTime: number, duration: number, drainRate: number, topProcesses: string[] }>
+getIdleActivePattern(days: number): Array<{ hour: number, lowCount: number, mediumCount: number, highCount: number, totalSamples: number }>
+getProcessStats(days: number): Array<{ name: string, avgCpu: number, peakCpu: number, stdDevCpu: number, sampleCount: number }>
+getDiskTrend(days: number): Array<{ date: string, avgDisk: number, minDisk: number, maxDisk: number, samples: number }>
+getNetworkTrend(days: number): Array<{ date: string, rxMB: number, txMB: number, samples: number }>
+```
+
 ---
 
 ## Monitor Orchestrator
@@ -206,16 +426,19 @@ tick()
         └─> analyzer.analyze(threshold, minDuration, cooldown)
               └─> if event: handleDrainEvent(event)
                     └─> db.insertDrainEvent(event)
-                    └─> sendAlert(event)  // formats message, T2 will dispatch
+                    └─> alertSender.sendAlert(event)
+        └─> spikeDetector.detect(snapshot.processes)
+              └─> for each spike: db.insertSpike(spike); alertSender.sendSpikeAlert(spike)
+        └─> batteryImpactAnalyzer.analyze(event)
+              └─> db.insertBatteryImpact(impact)
 ```
 
 ### Periodic Cleanup
 ```typescript
-if (Math.random() < 0.01) {  // ~1% chance per tick
-  this.db.cleanupOldSamples(this.config.retentionDays);
+if (tickCount % 100 === 0) {  // Every ~50 minutes at 30s intervals
+  this.db.cleanupOldSamples(this.config.retentionDays, this.config.maxSizeMB);
 }
 ```
-This is a placeholder. At 30s intervals, ~1% = once every ~50 minutes. A scheduled approach (every N ticks or at startup) would be more predictable.
 
 ---
 
@@ -266,10 +489,13 @@ const cpuTotal = load?.currentLoad ?? load?.avgLoad ?? 0;
 `si.battery()` always returns `hasBattery: false` and `percent: 0` on systems without a battery. The drain analyzer correctly skips these (charging check fails because `isPlugged` is often true even without battery).
 
 ### Disk I/O Cumulative Counters
-`si.disksIO()` returns cumulative read/write operation counts since boot, not rates. To calculate rates, you need `(current - previous) / deltaTime`. The monitor stores raw cumulative values; rate calculation is a future enhancement.
+`si.disksIO()` returns cumulative read/write operation counts since boot, not rates. The monitor stores raw cumulative values. The dashboard frontend computes rates from deltas: `(current - previous) / deltaTime`.
 
 ### Network Interface Selection
 The monitor picks the first interface where `operstate === 'up' && (rx_bytes > 0 || tx_bytes > 0)`. On multi-interface systems, this may not be the primary interface. A more robust approach would track the interface with the most traffic.
 
 ### Process CPU is Point-in-Time
 `si.processes()` CPU percentages are instantaneous at the moment of the call, not averaged over the sampling interval. A process that spikes to 100% for 1 second and sleeps for 29 seconds may show low CPU if sampled at the wrong moment.
+
+### Counter Resets
+Disk and network counters reset to zero on system reboot. The frontend clamps negative deltas to 0 when computing rates.
