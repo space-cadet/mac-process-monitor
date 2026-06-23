@@ -134,7 +134,18 @@ export class TimeSeriesDB {
       CREATE INDEX IF NOT EXISTS idx_drain_time ON drain_events(start_time);
     `);
 
-    // Monitoring profiles - user-defined watchlists
+    // Sleep/wake events - power state transitions
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sleep_wake_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL CHECK(event_type IN ('sleep', 'wake')),
+        timestamp INTEGER NOT NULL,
+        battery_percent REAL NOT NULL,
+        is_charging INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_sleep_wake_time ON sleep_wake_events(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_sleep_wake_type ON sleep_wake_events(event_type);
+    `);
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS monitoring_profiles (
         id TEXT PRIMARY KEY,
@@ -582,6 +593,42 @@ export class TimeSeriesDB {
     return stmt.get(processName) as any || null;
   }
 
+  // ─── Sleep/Wake Event Methods ───
+
+  insertSleepWakeEvent(event: { eventType: 'sleep' | 'wake'; timestamp: number; batteryPercent: number; isCharging: boolean }): void {
+    const stmt = this.db.prepare(`
+      INSERT INTO sleep_wake_events (event_type, timestamp, battery_percent, is_charging)
+      VALUES (?, ?, ?, ?)
+    `);
+    stmt.run(
+      event.eventType,
+      event.timestamp,
+      event.batteryPercent,
+      event.isCharging ? 1 : 0
+    );
+  }
+
+  getSleepWakeEvents(since?: number, until?: number): any[] {
+    let sql = 'SELECT * FROM sleep_wake_events WHERE 1=1';
+    const params: any[] = [];
+    if (since) {
+      sql += ' AND timestamp >= ?';
+      params.push(since);
+    }
+    if (until) {
+      sql += ' AND timestamp <= ?';
+      params.push(until);
+    }
+    sql += ' ORDER BY timestamp DESC';
+    const stmt = this.db.prepare(sql);
+    return stmt.all(...params) as any[];
+  }
+
+  getRecentSleepWakeEvents(days: number = 7): any[] {
+    const since = Date.now() - days * 86400000;
+    return this.getSleepWakeEvents(since);
+  }
+
   // ─── Monitoring Profiles ───
 
   getProfiles(): any[] {
@@ -613,6 +660,65 @@ export class TimeSeriesDB {
   deleteProfile(id: string): void {
     const stmt = this.db.prepare('DELETE FROM monitoring_profiles WHERE id = ?');
     stmt.run(id);
+  }
+
+  // ─── Date-Range Queries (for ReportGenerator) ───
+
+  getSnapshotsForDateRange(start: number, end: number): any[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM snapshots
+      WHERE timestamp >= ? AND timestamp < ?
+      ORDER BY timestamp ASC
+    `);
+    return stmt.all(start, end) as any[];
+  }
+
+  getDrainEventsForDateRange(start: number, end: number): DrainEvent[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM drain_events
+      WHERE start_time >= ? AND start_time < ?
+      ORDER BY start_time DESC
+    `);
+    const rows = stmt.all(start, end) as any[];
+    return rows.map(r => ({
+      ...r,
+      wasCharging: !!r.was_charging,
+      topProcesses: JSON.parse(r.top_processes_json),
+    }));
+  }
+
+  getTopProcessesForDateRange(start: number, end: number, metric: 'cpu' | 'mem', limit: number): any[] {
+    const avgCol = metric === 'cpu' ? 'AVG(cpu_percent)' : 'AVG(memory_percent)';
+    const peakCol = metric === 'cpu' ? 'MAX(cpu_percent)' : 'MAX(memory_percent)';
+
+    const stmt = this.db.prepare(`
+      SELECT
+        name,
+        ${avgCol} as avg_${metric},
+        ${peakCol} as peak_${metric},
+        COUNT(*) as samples,
+        GROUP_CONCAT(cpu_percent) as cpu_values
+      FROM process_samples ps
+      JOIN snapshots s ON ps.snapshot_id = s.id
+      WHERE s.timestamp >= ? AND s.timestamp < ?
+      GROUP BY name
+      ORDER BY avg_${metric} DESC
+      LIMIT ?
+    `);
+    const rows = stmt.all(start, end, limit) as any[];
+    return rows.map(r => ({
+      ...r,
+      values: r.cpu_values ? r.cpu_values.split(',').map(Number) : [],
+    }));
+  }
+
+  getBatteryImpactEventsForDateRange(start: number, end: number): any[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM battery_impact_events
+      WHERE start_time >= ? AND start_time < ?
+      ORDER BY start_time DESC
+    `);
+    return stmt.all(start, end) as any[];
   }
 
   close(): void {
