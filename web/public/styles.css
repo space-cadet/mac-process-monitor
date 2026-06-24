@@ -1256,15 +1256,20 @@ footer {
 
 @media (max-width: 640px) {
   .main-tabs {
-    gap: 6px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 8px;
+    gap: 6px;
+  }
+  .main-tabs::-webkit-scrollbar {
+    display: none;
   }
   .main-tab {
     padding: 8px 14px;
     font-size: 13px;
-    flex: 1;
-    min-width: 80px;
-    justify-content: center;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
   .main-tab .tab-icon {
     font-size: 14px;
@@ -1273,12 +1278,11 @@ footer {
 
 @media (max-width: 400px) {
   .main-tab {
-    padding: 6px 10px;
-    font-size: 12px;
-    min-width: 70px;
+    padding: 8px 12px;
+    font-size: 0;
   }
   .main-tab .tab-icon {
-    font-size: 12px;
+    font-size: 16px;
   }
 }
 
