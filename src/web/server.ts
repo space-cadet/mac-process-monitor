@@ -7,10 +7,28 @@ import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { exec } from 'child_process';
+import { execSync } from 'child_process';
 import QRCode from 'qrcode';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Detect Tailscale IP (100.x.x.x)
+function getTailscaleIP(): string | null {
+  try {
+    const ifaces = execSync('ifconfig 2>/dev/null || ip addr 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
+    const match = ifaces.match(/inet (100\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+function getBestHostIP(reqHost?: string): string {
+  const tailscale = getTailscaleIP();
+  if (tailscale) return tailscale;
+  if (reqHost) return reqHost.split(':')[0];
+  return 'localhost';
+}
 
 // Resolve DB path to canonical location (same as monitor)
 const dbPath = join(process.env.HOME || '', '.procmon', 'monitor.db');
@@ -642,15 +660,17 @@ const server = createServer(async (req, res) => {
   if (pathname === '/api/identity') {
     try {
       const identity = getIdentity();
+      const host = getBestHostIP(req.headers.host);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         did: identity.did,
         name: identity.name,
         version: identity.version,
         platform: identity.platform,
+        host: `${host}:${PORT}`,
         endpoints: {
-          metrics: '/api/metrics',
-          register: '/api/devices/register',
+          metrics: `http://${host}:${PORT}/api/metrics`,
+          register: `http://${host}:${PORT}/api/devices/register`,
         },
       }));
     } catch (err) {
@@ -708,14 +728,16 @@ const server = createServer(async (req, res) => {
   if (pathname === '/api/qr') {
     try {
       const identity = getIdentity();
+      const host = getBestHostIP(req.headers.host);
       const payload = JSON.stringify({
         did: identity.did,
         name: identity.name,
         version: identity.version,
         platform: identity.platform,
+        host: `${host}:${PORT}`,
         endpoints: {
-          metrics: `http://${req.headers.host?.split(':')[0] || 'localhost'}:${PORT}/api/metrics`,
-          register: `http://${req.headers.host?.split(':')[0] || 'localhost'}:${PORT}/api/devices/register`,
+          metrics: `http://${host}:${PORT}/api/metrics`,
+          register: `http://${host}:${PORT}/api/devices/register`,
         },
       });
       const svg = await QRCode.toString(payload, { type: 'svg', margin: 2, width: 256 });
