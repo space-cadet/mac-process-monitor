@@ -1656,3 +1656,90 @@ footer {
   font-size: 13px;
   color: var(--text-dim);
 }
+
+/* ─── Process Tree View ─── */
+.tree-wrapper {
+  padding: 8px 0;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.process-tree {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.tree-node {
+  margin-bottom: 2px;
+}
+
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+
+.tree-node-row:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.tree-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-spacer {
+  width: 16px;
+  display: inline-block;
+}
+
+.tree-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-bright);
+}
+
+.tree-pid {
+  color: var(--text-dim);
+  font-size: 11px;
+  width: 50px;
+  text-align: right;
+}
+
+.tree-cpu {
+  width: 60px;
+  text-align: right;
+  color: var(--accent-cpu);
+}
+
+.tree-cpu.high {
+  color: var(--accent-drain);
+  font-weight: 600;
+}
+
+.tree-mem {
+  width: 70px;
+  text-align: right;
+  color: var(--text-dim);
+}
+
+.tree-children {
+  border-left: 1px solid var(--border);
+  margin-left: 8px;
+  padding-left: 4px;
+}

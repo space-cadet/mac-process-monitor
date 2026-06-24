@@ -637,6 +637,56 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ─── Process Tree Endpoint ───
+  if (pathname === '/api/process-tree') {
+    try {
+      const { execSync } = require('child_process');
+      const output = execSync('ps -eo pid,ppid,comm,pcpu,pmem,rss', { encoding: 'utf8', timeout: 5000 });
+      const lines = output.trim().split('\n');
+      const headers = lines[0].trim().split(/\s+/);
+      const processes: any[] = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        // Parse: PID PPID COMM %CPU %MEM RSS — COMM may contain spaces but is right-aligned
+        // Strategy: extract leading numbers, then the rest
+        const match = line.match(/^(\d+)\s+(\d+)\s+(.+?)\s+([\d.]+)\s+([\d.]+)\s+(\d+)$/);
+        if (!match) continue;
+        processes.push({
+          pid: parseInt(match[1], 10),
+          ppid: parseInt(match[2], 10),
+          name: match[3].trim(),
+          cpuPercent: parseFloat(match[4]),
+          memoryPercent: parseFloat(match[5]),
+          rssKB: parseInt(match[6], 10),
+          children: [] as any[],
+        });
+      }
+
+      // Build tree
+      const pidMap = new Map<number, any>();
+      for (const p of processes) pidMap.set(p.pid, p);
+
+      const roots: any[] = [];
+      for (const p of processes) {
+        if (p.ppid === 0 || !pidMap.has(p.ppid)) {
+          roots.push(p);
+        } else {
+          const parent = pidMap.get(p.ppid);
+          if (parent) parent.children.push(p);
+        }
+      }
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ processes: roots, total: processes.length }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
   // Static files
   let filePath = pathname === '/' ? '/index.html' : pathname;
   const fullPath = join(__dirname, '../../web/public', filePath);

@@ -587,6 +587,101 @@ function renderDevices(devices) {
   }).join('');
 }
 
+let currentProcessView = 'list';
+
+function switchProcessView(view) {
+  currentProcessView = view;
+  document.getElementById('viewListBtn').classList.toggle('active', view === 'list');
+  document.getElementById('viewTreeBtn').classList.toggle('active', view === 'tree');
+  document.getElementById('processListWrapper').style.display = view === 'list' ? 'block' : 'none';
+  document.getElementById('processTreeWrapper').style.display = view === 'tree' ? 'block' : 'none';
+  if (view === 'tree') loadProcessTree();
+  else renderProcesses();
+}
+
+async function loadProcessTree() {
+  try {
+    const res = await fetch(`${API_BASE}/api/process-tree`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderProcessTree(data.processes || []);
+  } catch (err) {
+    console.error('Process tree fetch error:', err);
+    document.getElementById('processTree').innerHTML =
+      `<div style="padding: 20px; color: var(--text-dim); text-align: center;">Error: ${err.message}</div>`;
+  }
+}
+
+function renderProcessTree(nodes, level = 0) {
+  const container = document.getElementById('processTree');
+  if (level === 0) container.innerHTML = '';
+
+  if (!nodes || nodes.length === 0) {
+    if (level === 0) container.innerHTML = '<div style="padding: 20px; color: var(--text-dim); text-align: center;">No process data</div>';
+    return;
+  }
+
+  const html = nodes.map(n => {
+    const indent = level * 20;
+    const hasChildren = n.children && n.children.length > 0;
+    const toggleId = hasChildren ? `tree-toggle-${n.pid}` : null;
+    const childrenId = hasChildren ? `tree-children-${n.pid}` : null;
+    const rssMB = (n.rssKB / 1024).toFixed(1);
+    const cpuClass = n.cpuPercent > 50 ? 'high' : '';
+
+    return `
+      <div class="tree-node" style="margin-left: ${indent}px;">
+        <div class="tree-node-row">
+          ${hasChildren ? `<button class="tree-toggle" id="${toggleId}" onclick="toggleTreeNode(${n.pid})">▼</button>` : '<span class="tree-spacer"></span>'}
+          <span class="tree-name" title="PID ${n.pid}">${n.name}</span>
+          <span class="tree-pid">${n.pid}</span>
+          <span class="tree-cpu ${cpuClass}">${n.cpuPercent.toFixed(1)}%</span>
+          <span class="tree-mem">${rssMB} MB</span>
+        </div>
+        ${hasChildren ? `<div class="tree-children" id="${childrenId}">${renderProcessTreeHtml(n.children, level + 1)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  if (level === 0) {
+    container.innerHTML = html;
+  }
+  return html;
+}
+
+function renderProcessTreeHtml(nodes, level) {
+  return nodes.map(n => {
+    const indent = level * 20;
+    const hasChildren = n.children && n.children.length > 0;
+    const toggleId = hasChildren ? `tree-toggle-${n.pid}` : null;
+    const childrenId = hasChildren ? `tree-children-${n.pid}` : null;
+    const rssMB = (n.rssKB / 1024).toFixed(1);
+    const cpuClass = n.cpuPercent > 50 ? 'high' : '';
+
+    return `
+      <div class="tree-node" style="margin-left: ${indent}px;">
+        <div class="tree-node-row">
+          ${hasChildren ? `<button class="tree-toggle" id="${toggleId}" onclick="toggleTreeNode(${n.pid})">▼</button>` : '<span class="tree-spacer"></span>'}
+          <span class="tree-name" title="PID ${n.pid}">${n.name}</span>
+          <span class="tree-pid">${n.pid}</span>
+          <span class="tree-cpu ${cpuClass}">${n.cpuPercent.toFixed(1)}%</span>
+          <span class="tree-mem">${rssMB} MB</span>
+        </div>
+        ${hasChildren ? `<div class="tree-children" id="${childrenId}">${renderProcessTreeHtml(n.children, level + 1)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function toggleTreeNode(pid) {
+  const children = document.getElementById(`tree-children-${pid}`);
+  const toggle = document.getElementById(`tree-toggle-${pid}`);
+  if (!children || !toggle) return;
+  const isHidden = children.style.display === 'none';
+  children.style.display = isHidden ? 'block' : 'none';
+  toggle.textContent = isHidden ? '▼' : '▶';
+}
+
 // ─── Overview Tab (existing functionality) ───
 async function loadDbSize() {
   try {

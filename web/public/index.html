@@ -106,9 +106,12 @@
         <div class="panel">
           <div class="panel-header">
             <div class="panel-title" style="--panel-accent: var(--accent-cpu);">Top Processes</div>
-            <div class="panel-actions" id="processPanelActions"></div>
+            <div class="panel-actions" id="processPanelActions">
+              <button class="panel-btn active" id="viewListBtn" onclick="switchProcessView('list')">List</button>
+              <button class="panel-btn" id="viewTreeBtn" onclick="switchProcessView('tree')">Tree</button>
+            </div>
           </div>
-          <div class="table-wrapper">
+          <div class="table-wrapper" id="processListWrapper">
             <table class="process-table">
               <thead>
                 <tr>
@@ -122,6 +125,11 @@
                 <tr><td colspan="4" style="text-align: center; color: var(--text-dim);">Loading...</td></tr>
               </tbody>
             </table>
+          </div>
+          <div class="tree-wrapper" id="processTreeWrapper" style="display: none;">
+            <div class="process-tree" id="processTree">
+              <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading tree...</div>
+            </div>
           </div>
         </div>
 
