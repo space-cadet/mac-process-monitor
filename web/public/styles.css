@@ -1744,7 +1744,7 @@ footer {
 /* ─── Process Tree View ─── */
 .tree-wrapper {
   padding: 8px 0;
-  max-height: 400px;
+  max-height: 500px;
   overflow-y: auto;
 }
 
@@ -1754,48 +1754,112 @@ footer {
 }
 
 .tree-node {
-  margin-bottom: 2px;
+  margin-bottom: 1px;
+}
+
+/* Parent nodes (ones with children) get more visual weight */
+.tree-node:has(> .tree-children) > .tree-node-row {
+  background: rgba(255,255,255,0.02);
+  font-weight: 500;
+}
+
+.tree-node:has(> .tree-children) > .tree-node-row .tree-name {
+  color: var(--text-bright);
 }
 
 .tree-node-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  border-radius: 4px;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 6px;
   transition: background 0.15s;
+  min-height: 32px;
 }
 
 .tree-node-row:hover {
-  background: rgba(255,255,255,0.03);
+  background: rgba(255,255,255,0.05);
 }
 
 .tree-toggle {
-  background: none;
-  border: none;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
   color: var(--text-dim);
-  font-size: 10px;
+  font-size: 11px;
   cursor: pointer;
   padding: 0;
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 5px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.tree-toggle:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
 }
 
 .tree-spacer {
-  width: 16px;
+  width: 22px;
   display: inline-block;
+  flex-shrink: 0;
 }
 
+/* Process name with basename highlight */
 .tree-name {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.tree-name-text {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-bright);
+}
+
+.tree-name-basename {
+  color: var(--text-bright);
+  font-weight: 500;
+}
+
+.tree-name-dir {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+/* Process type badge */
+.tree-type-badge {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.tree-type-badge.system {
+  background: rgba(139, 92, 246, 0.15);
+  color: #a78bfa;
+}
+
+.tree-type-badge.user {
+  background: rgba(34, 211, 238, 0.15);
+  color: #22d3ee;
+}
+
+.tree-type-badge.daemon {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
 }
 
 .tree-pid {
@@ -1803,12 +1867,16 @@ footer {
   font-size: 11px;
   width: 50px;
   text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 .tree-cpu {
-  width: 60px;
+  width: 55px;
   text-align: right;
   color: var(--accent-cpu);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .tree-cpu.high {
@@ -1817,13 +1885,82 @@ footer {
 }
 
 .tree-mem {
-  width: 70px;
+  width: 65px;
   text-align: right;
   color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
+/* Improved tree children indentation */
 .tree-children {
-  border-left: 1px solid var(--border);
-  margin-left: 8px;
-  padding-left: 4px;
+  position: relative;
+  margin-left: 10px;
+  padding-left: 8px;
+}
+
+.tree-children::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1.5px;
+  background: linear-gradient(to bottom, var(--border), rgba(255,255,255,0.04));
+  border-radius: 1px;
+}
+
+/* Collapsed state */
+.tree-children.collapsed {
+  display: none;
+}
+
+/* Mobile optimizations */
+@media (max-width: 640px) {
+  .tree-node-row {
+    padding: 5px 8px;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  
+  .tree-name {
+    width: 100%;
+    order: -1;
+    margin-bottom: 2px;
+  }
+  
+  .tree-name-text {
+    font-size: 12px;
+  }
+  
+  .tree-pid {
+    width: auto;
+    text-align: left;
+    flex: 1;
+  }
+  
+  .tree-cpu {
+    width: auto;
+    text-align: right;
+  }
+  
+  .tree-mem {
+    width: auto;
+    text-align: right;
+  }
+  
+  .tree-type-badge {
+    display: none; /* Hide badges on mobile to save space */
+  }
+  
+  .tree-children {
+    margin-left: 6px;
+    padding-left: 6px;
+  }
+  
+  .tree-toggle,
+  .tree-spacer {
+    width: 20px;
+    height: 20px;
+  }
 }

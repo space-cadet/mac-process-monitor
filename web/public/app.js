@@ -794,18 +794,26 @@ function renderProcessTree(nodes, level = 0) {
   }
 
   const html = nodes.map(n => {
-    const indent = level * 20;
+    const indent = level * 16;
     const hasChildren = n.children && n.children.length > 0;
     const toggleId = hasChildren ? `tree-toggle-${n.pid}` : null;
     const childrenId = hasChildren ? `tree-children-${n.pid}` : null;
     const rssMB = (n.rssKB / 1024).toFixed(1);
     const cpuClass = n.cpuPercent > 50 ? 'high' : '';
+    const procType = getProcessType(n.name);
+    const { basename, dir } = splitPath(n.name);
 
     return `
       <div class="tree-node" style="margin-left: ${indent}px;">
         <div class="tree-node-row">
           ${hasChildren ? `<button class="tree-toggle" id="${toggleId}" onclick="toggleTreeNode(${n.pid})">▼</button>` : '<span class="tree-spacer"></span>'}
-          <span class="tree-name" title="PID ${n.pid}">${n.name}</span>
+          <span class="tree-name" title="${escapeHtml(n.name)} (PID ${n.pid})">
+            <span class="tree-name-text">
+              ${dir ? `<span class="tree-name-dir">${escapeHtml(dir)}</span>` : ''}
+              <span class="tree-name-basename">${escapeHtml(basename)}</span>
+            </span>
+            <span class="tree-type-badge ${procType}">${procType}</span>
+          </span>
           <span class="tree-pid">${n.pid}</span>
           <span class="tree-cpu ${cpuClass}">${n.cpuPercent.toFixed(1)}%</span>
           <span class="tree-mem">${rssMB} MB</span>
@@ -823,18 +831,26 @@ function renderProcessTree(nodes, level = 0) {
 
 function renderProcessTreeHtml(nodes, level) {
   return nodes.map(n => {
-    const indent = level * 20;
+    const indent = level * 16;
     const hasChildren = n.children && n.children.length > 0;
     const toggleId = hasChildren ? `tree-toggle-${n.pid}` : null;
     const childrenId = hasChildren ? `tree-children-${n.pid}` : null;
     const rssMB = (n.rssKB / 1024).toFixed(1);
     const cpuClass = n.cpuPercent > 50 ? 'high' : '';
+    const procType = getProcessType(n.name);
+    const { basename, dir } = splitPath(n.name);
 
     return `
       <div class="tree-node" style="margin-left: ${indent}px;">
         <div class="tree-node-row">
           ${hasChildren ? `<button class="tree-toggle" id="${toggleId}" onclick="toggleTreeNode(${n.pid})">▼</button>` : '<span class="tree-spacer"></span>'}
-          <span class="tree-name" title="PID ${n.pid}">${n.name}</span>
+          <span class="tree-name" title="${escapeHtml(n.name)} (PID ${n.pid})">
+            <span class="tree-name-text">
+              ${dir ? `<span class="tree-name-dir">${escapeHtml(dir)}</span>` : ''}
+              <span class="tree-name-basename">${escapeHtml(basename)}</span>
+            </span>
+            <span class="tree-type-badge ${procType}">${procType}</span>
+          </span>
           <span class="tree-pid">${n.pid}</span>
           <span class="tree-cpu ${cpuClass}">${n.cpuPercent.toFixed(1)}%</span>
           <span class="tree-mem">${rssMB} MB</span>
@@ -843,6 +859,33 @@ function renderProcessTreeHtml(nodes, level) {
       </div>
     `;
   }).join('');
+}
+
+// Split path into directory and basename
+function splitPath(path) {
+  if (!path || !path.includes('/')) return { basename: path || '', dir: '' };
+  const lastSlash = path.lastIndexOf('/');
+  const dir = path.substring(0, lastSlash + 1);
+  const basename = path.substring(lastSlash + 1);
+  // Truncate very long directories on mobile
+  return { basename, dir };
+}
+
+// Determine process type from path
+function getProcessType(name) {
+  if (!name) return 'user';
+  const path = name.toLowerCase();
+  if (path.includes('/sbin/') || path.includes('/bin/launchd') || path.startsWith('/system/')) return 'system';
+  if (path.includes('/library/') || path.includes('/usr/libexec/')) return 'daemon';
+  return 'user';
+}
+
+// Escape HTML to prevent XSS
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
 
 function toggleTreeNode(pid) {
