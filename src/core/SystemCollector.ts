@@ -1,4 +1,5 @@
 import si from 'systeminformation';
+import { execSync } from 'child_process';
 import {
   BatterySample,
   ProcessSnapshot,
@@ -9,8 +10,58 @@ import {
  * Collects system information using systeminformation library.
  * Samples battery state, process list, CPU load, memory, disk I/O,
  * network I/O, disk usage, and CPU temperature at regular intervals.
+ * On macOS, also captures per-process energy impact via `top`.
  */
 export class SystemCollector {
+  /**
+   * Parse macOS `top -l 1` output to extract energy impact (POWER column) per PID.
+   * Returns a Map of pid -> energy impact score.
+   */
+  private getMacOSEnergyMap(): Map<number, number> {
+    const energyMap = new Map<number, number>();
+    try {
+      // macOS top with all stats so we get the POWER column
+      const output = execSync('top -l 1 -n 0', { encoding: 'utf8', timeout: 3000 });
+      const lines = output.split('\n');
+      let inProcesses = false;
+      for (const line of lines) {
+        // Header line ends with 'POWER' or similar; processes start after blank line
+        if (line.trim().startsWith('PID') && line.includes('POWER')) {
+          inProcesses = true;
+          continue;
+        }
+        if (!inProcesses) continue;
+        if (line.trim() === '') continue;
+        const parts = line.trim().split(/\s+/);
+        // POWER is typically near the end. On macOS top output the columns are:
+        // PID COMMAND %CPU TIME #TH #WQ #PORTS MEM PURG CMPRS PGRP PPID STATE BOOSTS %CPU_ME %CPU_OTHRS UID FAULTS COW MSGSENT MSGRECV SYSBSD SYSMACH CSW PAGEINS IDLEW POWER INSTRS CYCLES JETPRI USER ...
+        // We need to find POWER by position. The columns before POWER are fixed-ish.
+        // A robust approach: find the index of 'POWER' in the header, then read that column.
+        // Since we don't have the header index here, we'll use a regex heuristic.
+        if (parts.length < 27) continue;
+        const pid = parseInt(parts[0], 10);
+        if (isNaN(pid)) continue;
+        // POWER is typically around column 27 (0-indexed varies). Use last numeric before user name.
+        // Heuristic: scan from the right, find the first numeric that could be POWER.
+        // On macOS the tail is: ... PAGEINS IDLEW POWER INSTRS CYCLES JETPRI USER
+        // So POWER is 4th from the right before USER.
+        const userIdx = parts.findIndex((p, i) => i > 20 && /^[a-zA-Z_]/.test(p));
+        if (userIdx > 0) {
+          const powerIdx = userIdx - 4; // JETPRI, CYCLES, INSTRS, POWER
+          if (powerIdx >= 0) {
+            const power = parseFloat(parts[powerIdx]);
+            if (!isNaN(power)) {
+              energyMap.set(pid, power);
+            }
+          }
+        }
+      }
+    } catch {
+      // top may fail or be unavailable; silently ignore
+    }
+    return energyMap;
+  }
+
   async getBattery(): Promise<BatterySample> {
     const battery = await si.battery();
     return {
@@ -29,6 +80,10 @@ export class SystemCollector {
       si.processes(),
       si.mem(),
     ]);
+
+    // On macOS, fetch energy impact data from top
+    const energyMap = process.platform === 'darwin' ? this.getMacOSEnergyMap() : new Map<number, number>();
+
     return procs.list.map((p) => ({
       pid: p.pid,
       name: p.name,
@@ -41,6 +96,7 @@ export class SystemCollector {
       nice: p.nice ?? 0,
       state: p.state ?? 'unknown',
       cmdline: p.command || p.name,
+      energyMJ: energyMap.get(p.pid) ?? null,
     }));
   }
 

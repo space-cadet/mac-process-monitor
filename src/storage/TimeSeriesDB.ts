@@ -67,6 +67,7 @@ export class TimeSeriesDB {
       { name: 'cpu_system_percent', type: 'REAL' },
       { name: 'nice', type: 'INTEGER' },
       { name: 'state', type: 'TEXT' },
+      { name: 'energy_mj', type: 'REAL' },
     ];
     for (const col of processCols) {
       if (!this.tableHasColumn('process_samples', col.name)) {
@@ -119,6 +120,7 @@ export class TimeSeriesDB {
         nice INTEGER,
         state TEXT,
         cmdline TEXT,
+        energy_mj REAL,
         FOREIGN KEY (snapshot_id) REFERENCES snapshots(id)
       );
       CREATE INDEX IF NOT EXISTS idx_processes_snapshot ON process_samples(snapshot_id);
@@ -250,9 +252,9 @@ export class TimeSeriesDB {
       const procStmt = this.db.prepare(`
         INSERT INTO process_samples (
           snapshot_id, pid, name, cpu_percent, cpu_user_percent, cpu_system_percent,
-          memory_percent, rss_mb, nice, state, cmdline
+          memory_percent, rss_mb, nice, state, cmdline, energy_mj
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const insertProc = this.db.transaction((processes: ProcessSnapshot[]) => {
@@ -260,7 +262,8 @@ export class TimeSeriesDB {
           procStmt.run(
             snapshotId, proc.pid, proc.name,
             proc.cpuPercent, proc.cpuUserPercent, proc.cpuSystemPercent,
-            proc.memoryPercent, proc.rssMB, proc.nice, proc.state, proc.cmdline
+            proc.memoryPercent, proc.rssMB, proc.nice, proc.state, proc.cmdline,
+            proc.energyMJ ?? null
           );
         }
       });
@@ -416,6 +419,7 @@ export class TimeSeriesDB {
         nice: p.nice ?? 0,
         state: p.state ?? 'unknown',
         cmdline: p.cmdline,
+        energyMJ: p.energy_mj ?? null,
       })),
       cpuTotal: row.cpu_total,
       cpuUser: row.cpu_user ?? 0,

@@ -22,6 +22,7 @@ export interface ProcessSnapshot {
   nice: number;             // process priority/nice value
   state: string;            // running, sleeping, etc.
   cmdline: string;
+  energyMJ?: number | null;        // macOS energy impact score (from top POWER column)
 }
 
 // System snapshot - everything at one timestamp
