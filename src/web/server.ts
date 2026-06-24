@@ -1,12 +1,14 @@
 import { TimeSeriesDB } from '../storage/TimeSeriesDB.js';
 import { SystemCollector } from '../core/SystemCollector.js';
 import { DeviceRegistry } from '../core/DeviceRegistry.js';
+import { getIdentity, getDid, getName } from '../core/DeviceIdentity.js';
 import { loadConfig, saveConfig } from '../config/ConfigManager.js';
 import { createServer } from 'http';
 import { readFileSync, existsSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { exec } from 'child_process';
+import QRCode from 'qrcode';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -636,6 +638,96 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // ─── Device Identity ───
+  if (pathname === '/api/identity') {
+    try {
+      const identity = getIdentity();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        did: identity.did,
+        name: identity.name,
+        version: identity.version,
+        platform: identity.platform,
+        endpoints: {
+          metrics: '/api/metrics',
+          register: '/api/devices/register',
+        },
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/metrics') {
+    try {
+      const since = url.searchParams.get('since') || '';
+      const limit = parseInt(url.searchParams.get('limit') || '100', 10);
+      const identity = getIdentity();
+      const sinceMs = since ? new Date(since).getTime() : 0;
+
+      const snapshots = db.db.prepare(`
+        SELECT * FROM snapshots
+        WHERE timestamp >= ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).all(sinceMs, limit);
+
+      const battery = db.db.prepare(`
+        SELECT timestamp, battery_percent, is_charging
+        FROM snapshots
+        WHERE timestamp >= ?
+        ORDER BY timestamp DESC
+        LIMIT ?
+      `).all(sinceMs, limit);
+
+      const processes = db.db.prepare(`
+        SELECT ps.name, ps.pid, ps.cpu_percent, ps.memory_percent, ps.rss_mb, s.timestamp
+        FROM process_samples ps
+        JOIN snapshots s ON ps.snapshot_id = s.id
+        WHERE s.timestamp >= ?
+        ORDER BY s.timestamp DESC, ps.cpu_percent DESC
+        LIMIT ?
+      `).all(sinceMs, limit);
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        device: { did: identity.did, name: identity.name },
+        snapshots,
+        battery,
+        processes,
+      }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/qr') {
+    try {
+      const identity = getIdentity();
+      const payload = JSON.stringify({
+        did: identity.did,
+        name: identity.name,
+        version: identity.version,
+        platform: identity.platform,
+        endpoints: {
+          metrics: `http://${req.headers.host?.split(':')[0] || 'localhost'}:${PORT}/api/metrics`,
+          register: `http://${req.headers.host?.split(':')[0] || 'localhost'}:${PORT}/api/devices/register`,
+        },
+      });
+      const svg = await QRCode.toString(payload, { type: 'svg', margin: 2, width: 256 });
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+      res.end(svg);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
   if (pathname === '/api/restart' && req.method === 'POST') {
     try {
       // Spawn monitor restart in background
@@ -660,14 +752,19 @@ const server = createServer(async (req, res) => {
       req.on('end', () => {
         try {
           const payload = JSON.parse(body);
+          const remoteIp = req.socket.remoteAddress?.replace(/^::ffff:/, '') || payload.ip || 'unknown';
+          const metricsPort = payload.port || PORT;
           const device = deviceRegistry.register({
-            id: payload.id || `device_${Date.now()}`,
+            id: payload.id || payload.did || `device_${Date.now()}`,
             name: payload.name || 'Unknown Device',
             hostname: payload.hostname || 'unknown',
             platform: payload.platform || process.platform,
             arch: payload.arch || process.arch,
-            ip: payload.ip || req.socket.remoteAddress,
+            ip: remoteIp,
             version: payload.version,
+            endpoint: payload.endpoint || {
+              metrics: `http://${remoteIp}:${metricsPort}/api/metrics`,
+            },
           });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true, device }));

@@ -9,6 +9,8 @@ let currentAnalysisData = null;
 let currentAnalysisTitle = '';
 let previousSnapshot = null;
 let lastNetworkRates = { rx: 0, tx: 0 };
+let peerMetricsCache = new Map();
+let peerPollInterval = null;
 
 // ─── Main Tab Switching ───
 function switchMainTab(tab) {
@@ -23,6 +25,12 @@ function switchMainTab(tab) {
     loadSleepWakeEvents(7);
   } else if (tab === 'devices') {
     loadDevices();
+  } else {
+    // Clean up peer polling when leaving devices tab
+    if (peerPollInterval) {
+      clearInterval(peerPollInterval);
+      peerPollInterval = null;
+    }
   }
 }
 
@@ -554,10 +562,17 @@ function renderSleepWakeEvents(events) {
 
 async function loadDevices() {
   try {
-    const res = await fetch(`${API_BASE}/api/devices`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    renderDevices(data.devices || []);
+    const [devicesRes, identityRes] = await Promise.all([
+      fetch(`${API_BASE}/api/devices`),
+      fetch(`${API_BASE}/api/identity`).catch(() => null),
+    ]);
+
+    if (!devicesRes.ok) throw new Error(`HTTP ${devicesRes.status}`);
+    const data = await devicesRes.json();
+    const identity = identityRes ? await identityRes.json() : null;
+
+    renderDevices(data.devices || [], identity);
+    startPeerPolling(data.devices || []);
   } catch (err) {
     console.error('Device fetch error:', err);
     document.getElementById('deviceGrid').innerHTML =
@@ -565,22 +580,48 @@ async function loadDevices() {
   }
 }
 
-function renderDevices(devices) {
+function renderDevices(devices, identity) {
   const container = document.getElementById('deviceGrid');
-  if (!devices || devices.length === 0) {
+  if (!devices.length && !identity) {
     container.innerHTML = `<div style="padding: 20px; color: var(--text-dim); text-align: center;">No devices registered yet</div>`;
     return;
   }
 
-  container.innerHTML = devices.map(d => {
+  const cards = [];
+
+  // This device card
+  if (identity) {
+    cards.push(`
+      <div class="device-card" style="border-left: 3px solid var(--accent-ok);">
+        <div class="device-card-header">
+          <div class="device-card-icon">🏠</div>
+          <div class="device-card-info">
+            <div class="device-card-name">${identity.name} <span style="font-size: 11px; color: var(--accent-ok);">(This Device)</span></div>
+            <div class="device-card-hostname">${identity.platform} • ${identity.version}</div>
+          </div>
+          <div class="device-card-status" style="color: var(--accent-ok);">🟢 Online</div>
+        </div>
+        <div class="device-card-meta">
+          <span style="font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);">${identity.did}</span>
+        </div>
+        <div class="device-card-footer">
+          <span>DID: ${identity.did.slice(0, 16)}…</span>
+        </div>
+      </div>
+    `);
+  }
+
+  // Peer device cards
+  cards.push(...devices.map(d => {
     const lastSeen = new Date(d.lastSeen).toLocaleString();
     const registered = new Date(d.registeredAt).toLocaleDateString();
     const statusColor = d.isOnline ? 'var(--accent-ok)' : 'var(--text-dim)';
     const statusIcon = d.isOnline ? '🟢' : '⚪';
     const platformIcon = d.platform === 'darwin' ? '🍎' : d.platform === 'linux' ? '🐧' : d.platform === 'win32' ? '🪟' : '🖥️';
+    const lastPoll = d.lastMetricsPoll ? new Date(d.lastMetricsPoll).toLocaleTimeString() : 'Never';
 
     return `
-      <div class="device-card" style="border-left: 3px solid ${statusColor};">
+      <div class="device-card" style="border-left: 3px solid ${statusColor};" data-device-id="${d.id}">
         <div class="device-card-header">
           <div class="device-card-icon">${platformIcon}</div>
           <div class="device-card-info">
@@ -595,11 +636,127 @@ function renderDevices(devices) {
         </div>
         <div class="device-card-footer">
           <span>Last seen: ${lastSeen}</span>
-          <span>Registered: ${registered}</span>
+          <span>Poll: ${lastPoll}</span>
         </div>
+        <div class="peer-metric-preview" id="peer-preview-${d.id}" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);"></div>
       </div>
     `;
-  }).join('');
+  }));
+
+  container.innerHTML = cards.join('');
+}
+
+async function showQrModal() {
+  try {
+    const res = await fetch(`${API_BASE}/api/qr`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const svg = await res.text();
+    document.getElementById('qrCodeContainer').innerHTML = svg;
+
+    // Also show the JSON payload
+    const identityRes = await fetch(`${API_BASE}/api/identity`);
+    const identity = await identityRes.json();
+    document.getElementById('qrCodePayload').textContent = JSON.stringify(identity, null, 2);
+  } catch (err) {
+    document.getElementById('qrCodeContainer').innerHTML = `<div style="color: var(--accent-drain);">Error: ${err.message}</div>`;
+  }
+  document.getElementById('qrModal').style.display = 'flex';
+}
+
+function closeQrModal() {
+  document.getElementById('qrModal').style.display = 'none';
+}
+
+function startPeerPolling(devices) {
+  if (peerPollInterval) {
+    clearInterval(peerPollInterval);
+    peerPollInterval = null;
+  }
+
+  const peers = devices.filter(d => d.endpoint?.metrics && d.isOnline);
+  if (!peers.length) {
+    document.getElementById('peerMetricsPanel').style.display = 'none';
+    return;
+  }
+
+  document.getElementById('peerMetricsPanel').style.display = 'block';
+  pollPeers(peers);
+
+  peerPollInterval = setInterval(() => pollPeers(peers), 30000); // every 30s
+}
+
+async function pollPeers(peers) {
+  for (const peer of peers) {
+    try {
+      const url = `${peer.endpoint.metrics}?since=${new Date(Date.now() - 300000).toISOString()}&limit=10`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      if (!res.ok) continue;
+      const data = await res.json();
+      peerMetricsCache.set(peer.id, data);
+      renderPeerPreview(peer.id, data);
+      renderPeerMetricsGrid(peers);
+    } catch (err) {
+      console.warn(`Peer poll failed for ${peer.name}:`, err.message);
+    }
+  }
+}
+
+function renderPeerPreview(deviceId, data) {
+  const container = document.getElementById(`peer-preview-${deviceId}`);
+  if (!container || !data) return;
+
+  const latestSnap = data.snapshots?.[0];
+  const latestBat = data.battery?.[0];
+  const topProc = data.processes?.[0];
+
+  container.innerHTML = `
+    <div style="display: flex; gap: 12px; font-size: 12px; color: var(--text-dim);">
+      ${latestBat ? `<span>🔋 ${latestBat.battery_percent?.toFixed(0) ?? '--'}%</span>` : ''}
+      ${latestSnap ? `<span>💻 CPU ${latestSnap.cpu_total?.toFixed(1) ?? '--'}%</span>` : ''}
+      ${topProc ? `<span>⚡ ${topProc.name} ${topProc.cpu_percent?.toFixed(1) ?? '--'}%</span>` : ''}
+    </div>
+  `;
+}
+
+function renderPeerMetricsGrid(peers) {
+  const container = document.getElementById('peerMetricsGrid');
+  if (!container) return;
+
+  const html = peers.map(peer => {
+    const data = peerMetricsCache.get(peer.id);
+    if (!data) return '';
+
+    const battery = data.battery || [];
+    const snapshots = data.snapshots || [];
+    const processes = data.processes || [];
+
+    // Mini sparkline for battery
+    const sparkPoints = battery.slice(0, 20).reverse().map((b, i, arr) => {
+      const x = (i / (arr.length - 1 || 1)) * 60;
+      const y = 30 - ((b.battery_percent || 0) / 100) * 30;
+      return `${x},${y}`;
+    }).join(' ');
+
+    const topProcs = processes.slice(0, 3).map(p =>
+      `<div style="display:flex;justify-content:space-between;font-size:12px;"><span>${p.name}</span><span>${p.cpu_percent?.toFixed(1) ?? '--'}%</span></div>`
+    ).join('');
+
+    return `
+      <div class="peer-metric-card" style="background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px; padding: 12px;">
+        <div style="font-weight: 600; font-size: 14px; margin-bottom: 8px;">${peer.name}</div>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+          <svg width="60" height="34" viewBox="0 0 60 34" style="opacity: 0.8;">
+            <polyline points="${sparkPoints}" fill="none" stroke="var(--accent-battery)" stroke-width="1.5"/>
+          </svg>
+          <div style="font-size: 20px; font-weight: 700;">${battery[0]?.battery_percent?.toFixed(0) ?? '--'}<span style="font-size:12px;font-weight:400;">%</span></div>
+        </div>
+        <div style="color: var(--text-dim); font-size: 11px; margin-bottom: 6px;">Top processes:</div>
+        ${topProcs}
+      </div>
+    `;
+  }).filter(Boolean).join('');
+
+  container.innerHTML = html || '<div style="padding: 12px; color: var(--text-dim); text-align: center;">Waiting for peer data...</div>';
 }
 
 let currentProcessView = 'list';

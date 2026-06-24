@@ -12,6 +12,8 @@ export interface Device {
   registeredAt: number;
   ip?: string;
   version?: string;
+  endpoint?: { metrics: string };
+  lastMetricsPoll?: number;
 }
 
 const DEVICES_PATH = join(homedir(), '.procmon', 'devices.json');
@@ -50,6 +52,7 @@ export class DeviceRegistry {
       existing.arch = device.arch;
       existing.ip = device.ip;
       existing.version = device.version;
+      if (device.endpoint) existing.endpoint = device.endpoint;
       existing.lastSeen = now;
       saveDevices(this.devices);
       return existing;

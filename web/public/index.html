@@ -212,12 +212,19 @@
         <div class="panel-header">
           <div class="panel-title" style="--panel-accent: var(--accent-ok);">🖥️ Registered Devices</div>
           <div class="panel-actions">
+            <button class="panel-btn" onclick="showQrModal()">📱 Show QR</button>
             <button class="panel-btn" onclick="loadDevices()">🔄 Refresh</button>
           </div>
         </div>
         <div class="device-grid" id="deviceGrid">
           <div style="padding: 20px; color: var(--text-dim); text-align: center;">Loading devices...</div>
         </div>
+      </div>
+      <div class="panel" id="peerMetricsPanel" style="display: none;">
+        <div class="panel-header">
+          <div class="panel-title" style="--panel-accent: var(--accent-cpu);">📡 Peer Metrics</div>
+        </div>
+        <div class="peer-metrics-grid" id="peerMetricsGrid"></div>
       </div>
     </div>
 
@@ -555,6 +562,21 @@
           <button class="panel-btn primary" onclick="saveProfile()">Save Profile</button>
           <button class="panel-btn" onclick="closeProfileModal()">Cancel</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Code Modal -->
+  <div class="modal-overlay" id="qrModal" style="display: none;">
+    <div class="modal" style="max-width: 400px; text-align: center;">
+      <div class="modal-header">
+        <h3>📱 Pair This Device</h3>
+        <button class="modal-close" onclick="closeQrModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-dim); margin-bottom: 16px;">Scan this QR code with another device to pair</p>
+        <div id="qrCodeContainer" style="display: flex; justify-content: center;"></div>
+        <div id="qrCodePayload" style="margin-top: 16px; font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); word-break: break-all;"></div>
       </div>
     </div>
   </div>
