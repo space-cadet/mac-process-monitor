@@ -1974,18 +1974,29 @@ footer {
     width: 170px;
   }
   
+  /* Horizontal scroll for tree, rows size to content */
+  .tree-wrapper {
+    overflow-x: auto;
+  }
+  
   .tree-node-row {
+    width: max-content;
+    min-width: 100%;
     padding: 5px 8px;
     gap: 4px;
   }
   
-  /* Name column gets 3x the space of stats */
+  /* Name column auto-sizes to content */
   .tree-name {
-    flex: 3;
+    flex: 0 0 auto;
+    min-width: auto;
+    overflow: visible;
   }
   
   .tree-name-text {
     font-size: 12px;
+    overflow: visible;
+    text-overflow: clip;
   }
   
   /* Hide directory prefix and PID on mobile */
