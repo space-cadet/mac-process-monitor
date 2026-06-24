@@ -23,11 +23,32 @@ function getTailscaleIP(): string | null {
   }
 }
 
+function getLanIP(): string | null {
+  try {
+    const ifaces = execSync('ifconfig 2>/dev/null || ip addr 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
+    // Prefer 192.168.x.x, 10.x.x.x, 172.16-31.x.x
+    const match = ifaces.match(/inet (192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})/);
+    return match ? match[1] : null;
+  } catch {
+    return null;
+  }
+}
+
 function getBestHostIP(reqHost?: string): string {
   const tailscale = getTailscaleIP();
   if (tailscale) return tailscale;
+  const lan = getLanIP();
+  if (lan) return lan;
   if (reqHost) return reqHost.split(':')[0];
   return 'localhost';
+}
+
+function getAllHosts(reqHost?: string): { tailscale: string | null; lan: string | null; local: string } {
+  return {
+    tailscale: getTailscaleIP(),
+    lan: getLanIP(),
+    local: reqHost ? reqHost.split(':')[0] : 'localhost',
+  };
 }
 
 // Resolve DB path to canonical location (same as monitor)
@@ -660,18 +681,34 @@ const server = createServer(async (req, res) => {
   if (pathname === '/api/identity') {
     try {
       const identity = getIdentity();
-      const host = getBestHostIP(req.headers.host);
+      const hosts = getAllHosts(req.headers.host);
+      const baseEndpoints: Record<string, string> = {
+        metrics: '/api/metrics',
+        register: '/api/devices/register',
+      };
+      const endpoints: Record<string, Record<string, string>> = { local: {} };
+      
+      // Build endpoint sets for each available network
+      for (const [key, path] of Object.entries(baseEndpoints)) {
+        endpoints.local[key] = `http://localhost:${PORT}${path}`;
+        if (hosts.lan) {
+          if (!endpoints.lan) endpoints.lan = {};
+          endpoints.lan[key] = `http://${hosts.lan}:${PORT}${path}`;
+        }
+        if (hosts.tailscale) {
+          if (!endpoints.tailscale) endpoints.tailscale = {};
+          endpoints.tailscale[key] = `http://${hosts.tailscale}:${PORT}${path}`;
+        }
+      }
+      
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         did: identity.did,
         name: identity.name,
         version: identity.version,
         platform: identity.platform,
-        host: `${host}:${PORT}`,
-        endpoints: {
-          metrics: `http://${host}:${PORT}/api/metrics`,
-          register: `http://${host}:${PORT}/api/devices/register`,
-        },
+        hosts,
+        endpoints,
       }));
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -728,16 +765,30 @@ const server = createServer(async (req, res) => {
   if (pathname === '/api/qr') {
     try {
       const identity = getIdentity();
-      const host = getBestHostIP(req.headers.host);
+      const hosts = getAllHosts(req.headers.host);
       const payload = JSON.stringify({
         did: identity.did,
         name: identity.name,
         version: identity.version,
         platform: identity.platform,
-        host: `${host}:${PORT}`,
+        hosts,
         endpoints: {
-          metrics: `http://${host}:${PORT}/api/metrics`,
-          register: `http://${host}:${PORT}/api/devices/register`,
+          local: {
+            metrics: `http://localhost:${PORT}/api/metrics`,
+            register: `http://localhost:${PORT}/api/devices/register`,
+          },
+          ...(hosts.lan ? {
+            lan: {
+              metrics: `http://${hosts.lan}:${PORT}/api/metrics`,
+              register: `http://${hosts.lan}:${PORT}/api/devices/register`,
+            }
+          } : {}),
+          ...(hosts.tailscale ? {
+            tailscale: {
+              metrics: `http://${hosts.tailscale}:${PORT}/api/metrics`,
+              register: `http://${hosts.tailscale}:${PORT}/api/devices/register`,
+            }
+          } : {}),
         },
       });
       const svg = await QRCode.toString(payload, { type: 'svg', margin: 2, width: 256 });
