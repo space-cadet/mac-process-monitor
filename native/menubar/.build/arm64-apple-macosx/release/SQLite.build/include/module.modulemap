@@ -1,3 +1,0 @@
-module SQLite {
-    header "/Users/sage/.openclaw/workspace/code/process-monitor/native/menubar/.build/arm64-apple-macosx/release/SQLite.build/include/SQLite-Swift.h"
-}
