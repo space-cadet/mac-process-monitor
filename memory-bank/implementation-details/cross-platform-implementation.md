@@ -1,7 +1,7 @@
 # Cross-Platform Implementation (T19)
 
 *Created: 2026-06-24*
-*Last Updated: 2026-06-24*
+*Last Updated: 2026-06-26*
 *Status: ✅ Complete*
 *Task: T19*
 
@@ -101,9 +101,29 @@ env: { HOME: process.env.HOME || '/tmp' }
 
 **Why:** The old path was hardcoded to Sage's Mac. This prevented the restart feature from working on the VPS (and would have failed for any other user/machine).
 
-### Battery UI (web/public/app.js)
+### Disk Usage (SystemCollector.ts)
 
-**Desktop/Server (no battery):**
+**macOS Catalina+ (APFS split volumes):**
+- **Before:** Code picked `/` as the primary mount, which is the small read-only **system volume** (~20% usage on a typical MacBook)
+- **Problem:** User data lives on `/System/Volumes/Data`, not `/`. The old code showed the system volume usage, not the actual disk usage.
+- **After:** On macOS, prefer `/System/Volumes/Data`, fall back to `/`, then to `fsSize[0]`:
+
+```typescript
+const primaryMount = process.platform === 'darwin'
+  ? (fsSize.find(f => f.mount === '/System/Volumes/Data') 
+      || fsSize.find(f => f.mount === '/') 
+      || fsSize[0])
+  : (fsSize.find(f => f.mount === '/' || f.mount === 'C:\\') || fsSize[0]);
+```
+
+**Why this happens:** macOS 10.15+ uses APFS with separate volumes — a read-only system volume (`/`) and a writable data volume (`/System/Volumes/Data`). The `df` command reports both, and the old code naively picked `/`.
+
+**Linux/Windows/Other:**
+- Linux: picks `/` (single root filesystem, no split volume issue)
+- Windows: picks `C:\` or first drive
+- No change needed — these platforms don't have the APFS split volume problem.
+
+### Battery UI (web/public/app.js)
 - Shows `— N/A` for percentage
 - Shows `No battery` for status
 - Shows `Desktop / Server` in identity panel
@@ -145,6 +165,7 @@ const hasBattery = battery.percent > 0 || (!battery.isPlugged && battery.percent
 | `src/core/EnergyCollector.ts` | Already macOS-only (no changes needed) |
 | `src/config/ConfigManager.ts` | Added Linux kernel threads to `ignoredProcesses` |
 | `src/web/server.ts` | Fixed `/api/restart` hardcoded path |
+| `src/core/SystemCollector.ts` | Fixed disk usage: prefer `/System/Volumes/Data` on macOS |
 | `web/public/app.js` | Added no-battery detection for battery UI |
 
 ## Testing Performed
@@ -180,3 +201,4 @@ const hasBattery = battery.percent > 0 || (!battery.isPlugged && battery.percent
 
 - `1561ca2` — SleepWakeDetector cross-platform rewrite
 - `18a7024` — ConfigManager, restart endpoint, battery UI fixes
+- `2127ae6` — Fix disk usage on macOS Catalina+: prefer `/System/Volumes/Data` over `/`
