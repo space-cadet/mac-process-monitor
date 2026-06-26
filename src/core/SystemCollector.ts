@@ -74,6 +74,21 @@ export class SystemCollector {
 
   async getBattery(): Promise<BatterySample> {
     const battery = await si.battery();
+    
+    // Try to get battery temperature from ioreg (Apple Silicon compatible)
+    let temperature: number | null = null;
+    try {
+      const { execSync } = await import('child_process');
+      const ioregOutput = execSync('ioreg -r -c AppleSmartBattery -d 1 2>/dev/null', { encoding: 'utf8', timeout: 5000 });
+      const tempMatch = ioregOutput.match(/"Temperature"\s*=\s*(\d+)/);
+      if (tempMatch) {
+        temperature = parseInt(tempMatch[1], 10); // in 0.01°C
+      }
+    } catch {
+      // Fallback: try systeminformation temperature field if available
+      temperature = (battery as any).temperature >= 0 ? (battery as any).temperature : null;
+    }
+
     return {
       timestamp: Date.now(),
       percent: battery.percent,
@@ -81,9 +96,9 @@ export class SystemCollector {
       isPlugged: battery.acConnected,
       timeRemaining: battery.timeRemaining >= 0 ? battery.timeRemaining : null,
       cycleCount: battery.cycleCount >= 0 ? battery.cycleCount : null,
-      temperature: (battery as any).temperature >= 0 ? (battery as any).temperature : null,
-      health: (battery as any).maxCapacity && (battery as any).designedCapacity
-        ? Math.round((battery as any).maxCapacity / (battery as any).designedCapacity * 100)
+      temperature,
+      health: battery.maxCapacity && battery.designedCapacity
+        ? Math.round(battery.maxCapacity / battery.designedCapacity * 100)
         : null,
     };
   }

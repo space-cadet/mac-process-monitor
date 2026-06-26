@@ -292,13 +292,76 @@ function renderNetworkView() {
           <div class="network-summary-value">${fmtRate(rx + tx)}</div>
         </div>
       </div>
-      <div class="detail-view-placeholder" style="margin-top: 16px;">
-        <div class="placeholder-icon">🌐</div>
-        <h4>Per-Interface Details</h4>
-        <p>Interface list, active connections, and latency monitoring require Phase 3 backend changes.</p>
+      <div id="networkInterfaceDetails" style="margin-top: 16px;">
+        <div class="panel-header">
+          <div class="panel-title" style="--panel-accent: var(--accent-ok);">Network Interfaces</div>
+        </div>
+        <div class="table-wrapper">
+          <table class="process-table">
+            <thead><tr><th>Interface</th><th>IP</th><th>State</th><th>Type</th></tr></thead>
+            <tbody><tr><td colspan="4" style="text-align:center">Loading...</td></tr></tbody>
+          </table>
+        </div>
+        <div class="panel-header" style="margin-top: 16px;">
+          <div class="panel-title" style="--panel-accent: var(--accent-ok);">Active Connections</div>
+        </div>
+        <div class="table-wrapper">
+          <table class="process-table">
+            <thead><tr><th>Process</th><th>Local</th><th>Remote</th><th>State</th></tr></thead>
+            <tbody><tr><td colspan="4" style="text-align:center">Loading...</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
   `;
+
+  // Fetch network interfaces
+  fetch('/api/network-interfaces')
+    .then(r => r.json())
+    .then(data => {
+      const interfaces = Array.isArray(data) ? data : (data.interfaces || []);
+      const tbody = document.querySelector('#networkInterfaceDetails table:nth-of-type(1) tbody');
+      if (!interfaces || interfaces.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No interfaces found</td></tr>';
+        return;
+      }
+      const rows = interfaces.map(i => {
+        const type = i.type || 'unknown';
+        const ip = i.ipV4 || i.ipV6 || '—';
+        const state = i.operstate || 'unknown';
+        const stateColor = state === 'up' ? 'var(--accent-ok)' : (state === 'down' ? 'var(--accent-battery)' : 'var(--text-dim)');
+        return `<tr><td>${i.name}</td><td>${ip}</td><td style="color:${stateColor}">${state}</td><td>${type}</td></tr>`;
+      }).join('');
+      tbody.innerHTML = rows;
+    })
+    .catch(err => {
+      const tbody = document.querySelector('#networkInterfaceDetails table:nth-of-type(1) tbody');
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center">Error: ${err.message}</td></tr>`;
+    });
+
+  // Fetch network connections
+  fetch('/api/network-connections?state=all')
+    .then(r => r.json())
+    .then(data => {
+      const connections = Array.isArray(data) ? data : (data.connections || []);
+      const tbody = document.querySelector('#networkInterfaceDetails table:nth-of-type(2) tbody');
+      if (!connections || connections.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center">No active connections</td></tr>';
+        return;
+      }
+      const rows = connections.slice(0, 50).map(c => {
+        const proc = c.processName || '—';
+        const local = c.localAddress ? `${c.localAddress}:${c.localPort}` : '—';
+        const remote = c.peerAddress ? `${c.peerAddress}:${c.peerPort}` : '—';
+        const stateColor = c.state === 'ESTABLISHED' ? 'var(--accent-ok)' : 'var(--text-dim)';
+        return `<tr><td>${proc}</td><td>${local}</td><td>${remote}</td><td style="color:${stateColor}">${c.state}</td></tr>`;
+      }).join('');
+      tbody.innerHTML = rows;
+    })
+    .catch(err => {
+      const tbody = document.querySelector('#networkInterfaceDetails table:nth-of-type(2) tbody');
+      tbody.innerHTML = `<tr><td colspan="4" style="text-align:center">Error: ${err.message}</td></tr>`;
+    });
 }
 
 function renderBatteryView() {
@@ -388,6 +451,18 @@ function renderStatusView() {
   const container = document.getElementById('detailViewContent');
   const load = currentSnapshot?.loadAvg ?? 0;
   const cpuTemp = currentSnapshot?.cpuTemp;
+  const battery = currentSnapshot?.battery;
+  const hasBattery = battery && (battery.percent > 0 || (!battery.isPlugged && battery.percent === 0));
+  const sysInfo = currentSnapshot?.systemInfo || {};
+  const uptime = sysInfo.uptime ?? 0;
+
+  const fmtUptime = seconds => {
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (days > 0) return `${days}d ${hours}h ${mins}m`;
+    return `${hours}h ${mins}m`;
+  };
 
   container.innerHTML = `
     <div class="status-view">
@@ -412,12 +487,48 @@ function renderStatusView() {
           <div class="status-card-label">Last Update</div>
           <div class="status-card-value" style="font-size: 14px;">${currentSnapshot ? new Date(currentSnapshot.timestamp).toLocaleTimeString() : '—'}</div>
         </div>
+        ${hasBattery ? `
+        <div class="status-card">
+          <div class="status-card-icon">🔋</div>
+          <div class="status-card-label">Battery Temp</div>
+          <div class="status-card-value">${battery.temperature != null ? (battery.temperature / 100).toFixed(1) + '°C' : '—'}</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-icon">🔌</div>
+          <div class="status-card-label">Power Source</div>
+          <div class="status-card-value" style="font-size: 14px;">${battery.isPlugged ? 'AC' : 'Battery'}</div>
+        </div>
+        ` : ''}
+        ${uptime > 0 ? `
+        <div class="status-card">
+          <div class="status-card-icon">⏱️</div>
+          <div class="status-card-label">Uptime</div>
+          <div class="status-card-value" style="font-size: 14px;">${fmtUptime(uptime)}</div>
+        </div>
+        ` : ''}
       </div>
+      ${(sysInfo.platform || sysInfo.distro || sysInfo.cpuModel) ? `
+      <div class="panel-header" style="margin-top: 16px;">
+        <div class="panel-title" style="--panel-accent: var(--accent-ok);">System Information</div>
+      </div>
+      <div class="table-wrapper">
+        <table class="process-table">
+          <tbody>
+            ${sysInfo.platform ? `<tr><td>Platform</td><td>${sysInfo.platform}</td></tr>` : ''}
+            ${sysInfo.distro ? `<tr><td>OS</td><td>${sysInfo.distro} ${sysInfo.release || ''}</td></tr>` : ''}
+            ${sysInfo.arch ? `<tr><td>Architecture</td><td>${sysInfo.arch}</td></tr>` : ''}
+            ${sysInfo.cpuModel ? `<tr><td>CPU</td><td>${sysInfo.cpuModel}</td></tr>` : ''}
+            ${sysInfo.cpuCores ? `<tr><td>Cores</td><td>${sysInfo.cpuCores} cores, ${sysInfo.cpuThreads} threads</td></tr>` : ''}
+          </tbody>
+        </table>
+      </div>
+      ` : `
       <div class="detail-view-placeholder" style="margin-top: 16px;">
         <div class="placeholder-icon">📈</div>
-        <h4>System Health History</h4>
-        <p>Historical uptime, thermal trends, and system health scoring will appear here in a future update.</p>
+        <h4>System Information</h4>
+        <p>System information will be available after the next data collection cycle.</p>
       </div>
+      `}
     </div>
   `;
 }
