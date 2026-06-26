@@ -151,6 +151,76 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (pathname === '/api/network-interfaces') {
+    try {
+      const snapshot = collector.getLatestSnapshot?.();
+      if (snapshot && snapshot.networkInterfaces) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ interfaces: snapshot.networkInterfaces }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ interfaces: [] }));
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/network-connections') {
+    try {
+      const state = url.searchParams.get('state') || 'all';
+      const si = await import('systeminformation');
+      const connections = await si.networkConnections();
+      let filtered = connections;
+      if (state !== 'all') {
+        filtered = connections.filter((c: any) => c.state.toLowerCase() === state.toLowerCase());
+      }
+      // Enrich with process names from latest snapshot
+      const snapshot = collector.getLatestSnapshot?.();
+      const processMap = new Map();
+      if (snapshot) {
+        for (const p of snapshot.processes) {
+          processMap.set(p.pid, p.name);
+        }
+      }
+      const enriched = filtered.slice(0, 200).map((c: any) => ({
+        protocol: c.protocol || 'unknown',
+        localAddress: c.localAddress || '-',
+        localPort: c.localPort || '-',
+        peerAddress: c.peerAddress || '-',
+        peerPort: c.peerPort || '-',
+        state: c.state || 'unknown',
+        pid: c.pid || null,
+        processName: c.pid ? (processMap.get(c.pid) || 'unknown') : null,
+      }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ connections: enriched, total: connections.length }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
+  if (pathname === '/api/disk-volumes') {
+    try {
+      const snapshot = collector.getLatestSnapshot?.();
+      if (snapshot && snapshot.diskVolumes) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ volumes: snapshot.diskVolumes }));
+      } else {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ volumes: [] }));
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: (err as Error).message }));
+    }
+    return;
+  }
+
   if (pathname === '/api/process-stats') {
     try {
       const name = url.searchParams.get('name') || '';

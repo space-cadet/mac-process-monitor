@@ -1,3 +1,54 @@
+export interface NetworkInterface {
+  iface: string;
+  ip4?: string;
+  ip6?: string;
+  mac?: string;
+  operstate: string;
+  rx_bytes: number;
+  tx_bytes: number;
+  rx_dropped: number;
+  tx_dropped: number;
+  rx_errors: number;
+  tx_errors: number;
+  speed?: number;
+  duplex?: string;
+}
+
+export interface NetworkConnection {
+  protocol: string;
+  localAddress: string;
+  localPort: string;
+  peerAddress: string;
+  peerPort: string;
+  state: string;
+  pid: number | null;
+  processName: string | null;
+}
+
+export interface DiskVolume {
+  fs: string;
+  type: string;
+  size: number;
+  used: number;
+  available: number;
+  use: number;
+  mount: string;
+  rw: boolean | null;
+}
+
+export interface SystemInfo {
+  platform: string;
+  distro: string;
+  release: string;
+  arch: string;
+  hostname: string;
+  uptime: number;
+  bootTime: number;
+  cpuModel: string;
+  cpuCores: number;
+  cpuThreads: number;
+}
+
 // Battery sample - single point-in-time measurement
 export interface BatterySample {
   timestamp: number;        // Unix epoch ms
@@ -7,6 +58,7 @@ export interface BatterySample {
   timeRemaining: number | null;  // minutes (null if charging)
   cycleCount: number | null;
   temperature: number | null;    // °C if available
+  health: number | null;         // Battery health % (maxCapacity / designedCapacity * 100)
 }
 
 // Process snapshot - CPU/memory for one process
@@ -47,13 +99,22 @@ export interface SystemSnapshot {
   diskReadIO: number | null;
   diskWriteIO: number | null;
   diskTotalIO: number | null;
+  // Disk I/O rates (bytes/sec, delta-based)
+  diskReadRate: number | null;
+  diskWriteRate: number | null;
   // Network I/O (system-level cumulative counters, first active interface)
   netRxBytes: number | null;
   netTxBytes: number | null;
+  // Network interfaces (all)
+  networkInterfaces: NetworkInterface[];
   // Disk usage (primary mount)
   fsUsedPercent: number | null;
+  // All disk volumes
+  diskVolumes: DiskVolume[];
   // Thermal
   cpuTemp: number | null;
+  // System info
+  systemInfo: SystemInfo;
 }
 
 // Drain event - detected rapid battery drop

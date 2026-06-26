@@ -5,31 +5,23 @@
 ## Current Tasks
 
 ### 🔄 T20: Dashboard Detail Views — Clickable KPI Cards
-**Status:** Phase 1 complete (frontend skeleton), Phases 2-4 pending.
+**Status:** Phase 2 complete (all views functional with existing data). Phases 3-4 pending backend APIs.
 **Started:** 2026-06-26.
 
-**What it is:** Clicking each KPI card (CPU, Memory, Disk, Network, Battery) switches the detail view below it:
-- **CPU** → Process list sorted by CPU (current default) ✅
-- **Memory** → Process list sorted by memory + system memory pressure gauge (placeholder)
-- **Disk** → Disk/volume list with per-mount I/O stats, queue depth, SMART status (placeholder)
-- **Network** → Network interface list + active connections table + latency sparkline (placeholder)
-- **Battery** → Battery history chart + per-process energy/impact table (placeholder)
+**Implemented:**
+- **CPU** → Process list sorted by CPU ✅ (Phase 1)
+- **Memory** → Memory pressure gauge + process list sorted by memory ✅ (Phase 2)
+- **Disk** → Disk usage gauge + I/O counters ✅ (Phase 2)
+- **Network** → RX/TX/Total rate cards ✅ (Phase 2)
+- **Battery** → Battery status + per-process energy table ✅ (Phase 2)
+- **Status** → Load avg, CPU temp, process count, last update ✅ (Phase 2)
 
-**Phase 1 implemented (2026-06-26):**
-- Click handlers on all 6 KPI cards
-- Active card state (border highlight + shadow + lift)
-- `localStorage` persistence (`procmon_active_card`)
-- `renderDetailView()` dispatcher
-- Process list moved into CPU detail view
-- Search + List/Tree buttons hidden when not on CPU card
-- Cache-busting versions bumped
-
-**Design doc:** [Dashboard Detail Views](memory-bank/implementation-details/dashboard-detail-views.md)
-
-**Open questions:**
-- Should chart tabs auto-sync with selected card?
-- Per-process disk I/O requires root — worth it?
-- Per-process network bandwidth requires root — worth it?
+**Pending backend APIs:**
+- `/api/disk-volumes` — per-mount stats, I/O throughput, queue depth, SMART
+- `/api/network-interfaces` — per-interface RX/TX/errors/drops
+- `/api/network-connections` — active TCP/UDP connections
+- `/api/battery-history` — battery % over time range
+- `/api/process-energy` — per-process energy scores over time
 
 ---
 

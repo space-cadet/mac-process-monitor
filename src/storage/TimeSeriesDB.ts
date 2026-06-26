@@ -406,6 +406,7 @@ export class TimeSeriesDB {
         timeRemaining: null,
         cycleCount: null,
         temperature: null,
+        health: null,
       },
       processes: processes.map(p => ({
         pid: p.pid,
@@ -438,6 +439,22 @@ export class TimeSeriesDB {
       netTxBytes: row.net_tx_bytes ?? null,
       fsUsedPercent: row.fs_used_percent ?? null,
       cpuTemp: row.cpu_temp ?? null,
+      diskReadRate: null,
+      diskWriteRate: null,
+      networkInterfaces: [],
+      diskVolumes: [],
+      systemInfo: {
+        platform: 'unknown',
+        distro: 'unknown',
+        release: 'unknown',
+        arch: 'unknown',
+        hostname: 'unknown',
+        uptime: 0,
+        bootTime: 0,
+        cpuModel: 'unknown',
+        cpuCores: 0,
+        cpuThreads: 0,
+      },
     };
   }
 

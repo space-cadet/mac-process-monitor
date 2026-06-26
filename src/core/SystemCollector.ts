@@ -2,7 +2,10 @@ import si from 'systeminformation';
 import { execSync } from 'child_process';
 import {
   BatterySample,
+  DiskVolume,
+  NetworkInterface,
   ProcessSnapshot,
+  SystemInfo,
   SystemSnapshot,
 } from '../types/index.js';
 
@@ -13,6 +16,13 @@ import {
  * On macOS, also captures per-process energy impact via `top`.
  */
 export class SystemCollector {
+  private prevDiskIO: { rIO: number; wIO: number; timestamp: number } | null = null;
+  private sampleIntervalSeconds = 30;
+  private latestSnapshot: SystemSnapshot | null = null;
+
+  getLatestSnapshot(): SystemSnapshot | null {
+    return this.latestSnapshot;
+  }
   /**
    * Parse macOS `top -l 1` output to extract energy impact (POWER column) per PID.
    * Returns a Map of pid -> energy impact score.
@@ -72,6 +82,9 @@ export class SystemCollector {
       timeRemaining: battery.timeRemaining >= 0 ? battery.timeRemaining : null,
       cycleCount: battery.cycleCount >= 0 ? battery.cycleCount : null,
       temperature: (battery as any).temperature >= 0 ? (battery as any).temperature : null,
+      health: (battery as any).maxCapacity && (battery as any).designedCapacity
+        ? Math.round((battery as any).maxCapacity / (battery as any).designedCapacity * 100)
+        : null,
     };
   }
 
@@ -101,7 +114,10 @@ export class SystemCollector {
   }
 
   async getSystemSnapshot(): Promise<SystemSnapshot> {
-    const [battery, processes, load, mem, diskIO, netStats, fsSize, cpuTemp] = await Promise.all([
+    const [
+      battery, processes, load, mem, diskIO, netStats, fsSize, cpuTemp,
+      netInterfaces, osInfo, cpuInfo
+    ] = await Promise.all([
       this.getBattery(),
       this.getProcesses(),
       si.currentLoad(),
@@ -110,7 +126,14 @@ export class SystemCollector {
       si.networkStats().catch(() => []),
       si.fsSize().catch(() => []),
       si.cpuTemperature().catch(() => ({ main: null, max: null })),
+      si.networkInterfaces().catch(() => []),
+      si.osInfo().catch(() => ({ platform: 'unknown', distro: 'unknown', release: 'unknown', arch: 'unknown', hostname: 'unknown' })),
+      si.cpu().catch(() => ({ manufacturer: 'unknown', brand: 'unknown', cores: 0, threads: 0 })),
     ]);
+
+    // time() is synchronous
+    let timeInfo: any = { uptime: 0, bootTime: 0 };
+    try { timeInfo = si.time(); } catch {}
 
     // currentLoad returns { currentLoad: number, avgLoad: number, ... }
     const cpuTotal = load?.currentLoad ?? load?.avgLoad ?? 0;
@@ -121,13 +144,77 @@ export class SystemCollector {
     // Find primary mount (usually / or C:\)
     // On macOS Catalina+, user data is on /System/Volumes/Data, not /
     const primaryMount = process.platform === 'darwin'
-      ? (fsSize.find(f => f.mount === '/System/Volumes/Data') || fsSize.find(f => f.mount === '/') || fsSize[0])
-      : (fsSize.find(f => f.mount === '/' || f.mount === 'C:\\') || fsSize[0]);
+      ? (fsSize.find((f: any) => f.mount === '/System/Volumes/Data') || fsSize.find((f: any) => f.mount === '/') || fsSize[0])
+      : (fsSize.find((f: any) => f.mount === '/' || f.mount === 'C:\\') || fsSize[0]);
 
     // Find first active network interface with data
     const primaryNet = netStats.find(n => n.operstate === 'up' && (n.rx_bytes > 0 || n.tx_bytes > 0)) || netStats[0];
 
-    return {
+    // Calculate disk I/O rates (bytes/sec) from deltas
+    let diskReadRate: number | null = null;
+    let diskWriteRate: number | null = null;
+    if (diskIO && this.prevDiskIO) {
+      const dtSeconds = (Date.now() - this.prevDiskIO.timestamp) / 1000;
+      if (dtSeconds > 0) {
+        const rDelta = (diskIO.rIO || 0) - this.prevDiskIO.rIO;
+        const wDelta = (diskIO.wIO || 0) - this.prevDiskIO.wIO;
+        diskReadRate = Math.max(0, rDelta) / dtSeconds;
+        diskWriteRate = Math.max(0, wDelta) / dtSeconds;
+      }
+    }
+    if (diskIO) {
+      this.prevDiskIO = { rIO: diskIO.rIO || 0, wIO: diskIO.wIO || 0, timestamp: Date.now() };
+    }
+
+    // Build network interfaces list
+    const networkInterfaces: NetworkInterface[] = netInterfaces
+      .filter((iface: any) => !iface.internal)
+      .map((iface: any) => {
+        const stats = netStats.find((n: any) => n.iface === iface.iface);
+        return {
+          iface: iface.iface,
+          ip4: iface.ip4,
+          ip6: iface.ip6,
+          mac: iface.mac,
+          operstate: stats?.operstate || iface.operstate || 'unknown',
+          rx_bytes: stats?.rx_bytes || 0,
+          tx_bytes: stats?.tx_bytes || 0,
+          rx_dropped: stats?.rx_dropped || 0,
+          tx_dropped: stats?.tx_dropped || 0,
+          rx_errors: stats?.rx_errors || 0,
+          tx_errors: stats?.tx_errors || 0,
+          speed: (stats as any)?.speed || (iface as any)?.speed,
+          duplex: (stats as any)?.duplex || (iface as any)?.duplex,
+        };
+      });
+
+    // Build disk volumes list
+    const diskVolumes: DiskVolume[] = fsSize.map((fs: any) => ({
+      fs: fs.fs,
+      type: fs.type,
+      size: fs.size,
+      used: fs.used,
+      available: fs.available,
+      use: fs.use,
+      mount: fs.mount,
+      rw: fs.rw,
+    }));
+
+    // System info
+    const systemInfo: SystemInfo = {
+      platform: osInfo.platform || 'unknown',
+      distro: osInfo.distro || 'unknown',
+      release: osInfo.release || 'unknown',
+      arch: osInfo.arch || 'unknown',
+      hostname: osInfo.hostname || 'unknown',
+      uptime: timeInfo.uptime || 0,
+      bootTime: timeInfo.bootTime || 0,
+      cpuModel: (cpuInfo as any).brand || 'unknown',
+      cpuCores: (cpuInfo as any).cores || 0,
+      cpuThreads: (cpuInfo as any).threads || (cpuInfo as any).cores || 0,
+    };
+
+    const result = {
       timestamp: Date.now(),
       battery,
       processes: processes.sort((a, b) => b.cpuPercent - a.cpuPercent).slice(0, 50),
@@ -148,13 +235,22 @@ export class SystemCollector {
       diskReadIO: diskIO?.rIO ?? null,
       diskWriteIO: diskIO?.wIO ?? null,
       diskTotalIO: diskIO?.tIO ?? null,
+      diskReadRate,
+      diskWriteRate,
       // Network
       netRxBytes: primaryNet?.rx_bytes ?? null,
       netTxBytes: primaryNet?.tx_bytes ?? null,
+      networkInterfaces,
       // Disk usage
       fsUsedPercent: primaryMount?.use ?? null,
+      diskVolumes,
       // Thermal
       cpuTemp: cpuTemp?.main ?? cpuTemp?.max ?? null,
+      // System info
+      systemInfo,
     };
+
+    this.latestSnapshot = result;
+    return result;
   }
 }

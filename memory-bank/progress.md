@@ -100,9 +100,10 @@
 | 2026-06-24 | T12-T13-T15: Data export + Process tree + Energy API | ✅ |
 | 2026-06-24 | T17: Multi-Device V1 — identity, QR, peer polling, Tailscale | ✅ |
 | 2026-06-24 | Cross-Platform Fixes — SleepWakeDetector, restart path, ignored processes, battery UI | ✅ |
+| 2026-06-26 | T20 Phase 2: All detail views functional — Memory, Disk, Network, Battery, Status with real data | ✅ |
 | 2026-06-26 | T20 Phase 1: Clickable KPI cards with detail view switching (CPU→process list, others→placeholders) | ✅ |
 | 2026-06-26 | Disk usage fix — prefer `/System/Volumes/Data` on macOS Catalina+ for accurate reporting | ✅ |
-| *Next* | T20 Phase 2: Memory detail view (process list sorted by memory + pressure gauge) | ⬜ |
+| *Next* | T20 Phase 3: Backend APIs for per-volume disk, per-interface network, battery history | ⬜ |
 
 ### Current Blockers
 

@@ -186,8 +186,35 @@ function renderMemoryView() {
 function renderDiskView() {
   const container = document.getElementById('detailViewContent');
   const fsUsed = currentSnapshot?.fsUsedPercent ?? 0;
-  const diskRead = currentSnapshot?.diskReadIO ?? null;
-  const diskWrite = currentSnapshot?.diskWriteIO ?? null;
+  const diskRead = currentSnapshot?.diskReadRate ?? null;
+  const diskWrite = currentSnapshot?.diskWriteRate ?? null;
+  const volumes = currentSnapshot?.diskVolumes || [];
+
+  const fmtGB = bytes => {
+    if (bytes >= 1e12) return (bytes / 1e12).toFixed(2) + ' TB';
+    if (bytes >= 1e9) return (bytes / 1e9).toFixed(2) + ' GB';
+    if (bytes >= 1e6) return (bytes / 1e6).toFixed(2) + ' MB';
+    return bytes.toFixed(0) + ' B';
+  };
+
+  const volRows = volumes.map(v => `
+    <tr>
+      <td>${v.mount}</td>
+      <td>${v.fs}</td>
+      <td>${fmtGB(v.size)}</td>
+      <td>${fmtGB(v.used)}</td>
+      <td>${fmtGB(v.available)}</td>
+      <td>
+        <div class="mem-bar">
+          <span>${v.use.toFixed(1)}%</span>
+          <div class="mem-bar-track">
+            <div class="mem-bar-fill ${v.use > 90 ? 'high' : ''}" style="width: ${Math.min(v.use, 100)}%;"></div>
+          </div>
+        </div>
+      </td>
+      <td>${v.rw === false ? 'RO' : 'RW'}</td>
+    </tr>
+  `).join('');
 
   container.innerHTML = `
     <div class="disk-view">
@@ -200,22 +227,41 @@ function renderDiskView() {
           </div>
         </div>
         <div class="disk-summary-card">
-          <div class="disk-summary-label">I/O Operations</div>
+          <div class="disk-summary-label">I/O Rates</div>
           <div class="disk-io-row">
             <span>📖 Read</span>
-            <span class="disk-io-value">${diskRead !== null ? diskRead.toLocaleString() : '—'}</span>
+            <span class="disk-io-value">${diskRead !== null ? (diskRead / 1024 / 1024).toFixed(2) + ' MB/s' : '—'}</span>
           </div>
           <div class="disk-io-row">
             <span>✍️ Write</span>
-            <span class="disk-io-value">${diskWrite !== null ? diskWrite.toLocaleString() : '—'}</span>
+            <span class="disk-io-value">${diskWrite !== null ? (diskWrite / 1024 / 1024).toFixed(2) + ' MB/s' : '—'}</span>
           </div>
         </div>
       </div>
-      <div class="detail-view-placeholder" style="margin-top: 16px;">
-        <div class="placeholder-icon">💿</div>
-        <h4>Per-Volume Details</h4>
-        <p>Per-mount breakdown, I/O throughput, queue depth, and SMART status require Phase 2 backend changes.</p>
-      </div>
+      ${volRows ? `
+        <div class="table-wrapper" style="margin-top: 16px;">
+          <table class="process-table">
+            <thead>
+              <tr>
+                <th>Mount</th>
+                <th>Type</th>
+                <th>Size</th>
+                <th>Used</th>
+                <th>Free</th>
+                <th>Use%</th>
+                <th>Mode</th>
+              </tr>
+            </thead>
+            <tbody>${volRows}</tbody>
+          </table>
+        </div>
+      ` : `
+        <div class="detail-view-placeholder" style="margin-top: 16px;">
+          <div class="placeholder-icon">💿</div>
+          <h4>Per-Volume Details</h4>
+          <p>No disk volume data available.</p>
+        </div>
+      `}
     </div>
   `;
 }
