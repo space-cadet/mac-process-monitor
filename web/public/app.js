@@ -11,6 +11,7 @@ let previousSnapshot = null;
 let lastNetworkRates = { rx: 0, tx: 0 };
 let peerMetricsCache = new Map();
 let peerPollInterval = null;
+let currentSnapshot = null;
 
 // ─── KPI Card Selection ───
 let activeKpiCard = localStorage.getItem('procmon_active_card') || 'cpu';
@@ -108,55 +109,269 @@ function showProcessView() {
 
 function renderMemoryView() {
   const container = document.getElementById('detailViewContent');
+
+  // Get memory data from the latest snapshot (stored in globals via updateDashboard)
+  // We need to access the raw snapshot data — let's store it globally
+  const memPercent = currentSnapshot?.memoryTotal ?? 0;
+  const memUsedMB = currentSnapshot?.memoryUsedMB ?? 0;
+  const memFreeMB = currentSnapshot?.memoryFreeMB ?? 0;
+  const memTotalMB = memUsedMB + memFreeMB;
+  const swapUsedMB = currentSnapshot?.swapUsedMB ?? 0;
+  const swapTotalMB = currentSnapshot?.swapTotalMB ?? 0;
+
+  const fmtGB = (mb) => mb >= 1024 ? (mb / 1024).toFixed(1) + ' GB' : mb.toFixed(0) + ' MB';
+
+  const memGaugeColor = memPercent > 90 ? 'var(--accent-drain)' : memPercent > 75 ? 'var(--accent-warn)' : 'var(--accent-mem)';
+
+  let processes = [...currentProcesses].sort((a, b) => (b.memoryPercent || 0) - (a.memoryPercent || 0)).slice(0, 15);
+  if (currentSearchFilter) {
+    processes = processes.filter(processMatchesSearch);
+  }
+
+  const processRows = processes.map(p => `
+    <tr onclick="showProcessModal('${p.name.replace(/'/g, "\\'")}')" style="cursor: pointer;">
+      <td>
+        <div class="process-name">
+          <div class="process-icon">◆</div>
+          <span>${p.name}</span>
+        </div>
+      </td>
+      <td>${p.pid}</td>
+      <td>
+        <div class="mem-bar">
+          <span>${p.memoryPercent?.toFixed(1) ?? '--'}%</span>
+          <div class="mem-bar-track">
+            <div class="mem-bar-fill ${(p.memoryPercent || 0) > 10 ? 'high' : ''}" style="width: ${Math.min(p.memoryPercent || 0, 100)}%;"></div>
+          </div>
+        </div>
+      </td>
+      <td>${p.rssMB?.toFixed(0) ?? '--'} MB</td>
+    </tr>
+  `).join('');
+
   container.innerHTML = `
-    <div class="detail-view-placeholder">
-      <div class="placeholder-icon">💾</div>
-      <h4>Memory Details</h4>
-      <p>Process list sorted by memory usage, memory pressure gauge, and swap usage will appear here. (Phase 2)</p>
+    <div class="memory-view">
+      <div class="memory-gauge-section">
+        <div class="memory-gauge-header">
+          <span class="memory-gauge-label">Memory Usage</span>
+          <span class="memory-gauge-value">${memPercent.toFixed(1)}% — ${fmtGB(memUsedMB)} / ${fmtGB(memTotalMB)}</span>
+        </div>
+        <div class="memory-gauge-bar">
+          <div class="memory-gauge-fill" style="width: ${Math.min(memPercent, 100)}%; background: ${memGaugeColor};"></div>
+        </div>
+        <div class="memory-gauge-details">
+          <span>Free: ${fmtGB(memFreeMB)}</span>
+          ${swapTotalMB > 0 ? `<span>Swap: ${fmtGB(swapUsedMB)} / ${fmtGB(swapTotalMB)}</span>` : ''}
+        </div>
+      </div>
+      <div class="table-wrapper">
+        <table class="process-table">
+          <thead>
+            <tr>
+              <th>Process</th>
+              <th>PID</th>
+              <th>Memory %</th>
+              <th>RSS</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${processRows || '<tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 20px;">No process data</td></tr>'}
+          </tbody>
+        </table>
+      </div>
     </div>
   `;
 }
 
 function renderDiskView() {
   const container = document.getElementById('detailViewContent');
+  const fsUsed = currentSnapshot?.fsUsedPercent ?? 0;
+  const diskRead = currentSnapshot?.diskReadIO ?? null;
+  const diskWrite = currentSnapshot?.diskWriteIO ?? null;
+
   container.innerHTML = `
-    <div class="detail-view-placeholder">
-      <div class="placeholder-icon">💿</div>
-      <h4>Disk & Volumes</h4>
-      <p>Per-mount disk usage, I/O throughput, queue depth, and SMART status will appear here. (Phase 2)</p>
+    <div class="disk-view">
+      <div class="disk-summary">
+        <div class="disk-summary-card">
+          <div class="disk-summary-label">Disk Usage</div>
+          <div class="disk-summary-value">${fsUsed.toFixed(1)}%</div>
+          <div class="disk-gauge-bar">
+            <div class="disk-gauge-fill ${fsUsed > 90 ? 'critical' : fsUsed > 80 ? 'high' : ''}" style="width: ${Math.min(fsUsed, 100)}%;"></div>
+          </div>
+        </div>
+        <div class="disk-summary-card">
+          <div class="disk-summary-label">I/O Operations</div>
+          <div class="disk-io-row">
+            <span>📖 Read</span>
+            <span class="disk-io-value">${diskRead !== null ? diskRead.toLocaleString() : '—'}</span>
+          </div>
+          <div class="disk-io-row">
+            <span>✍️ Write</span>
+            <span class="disk-io-value">${diskWrite !== null ? diskWrite.toLocaleString() : '—'}</span>
+          </div>
+        </div>
+      </div>
+      <div class="detail-view-placeholder" style="margin-top: 16px;">
+        <div class="placeholder-icon">💿</div>
+        <h4>Per-Volume Details</h4>
+        <p>Per-mount breakdown, I/O throughput, queue depth, and SMART status require Phase 2 backend changes.</p>
+      </div>
     </div>
   `;
 }
 
 function renderNetworkView() {
   const container = document.getElementById('detailViewContent');
+  const rx = lastNetworkRates.rx;
+  const tx = lastNetworkRates.tx;
+  const fmtRate = v => {
+    if (v >= 1024) return (v / 1024).toFixed(2) + ' MB/s';
+    if (v < 1) return (v * 1024).toFixed(0) + ' B/s';
+    return v.toFixed(1) + ' KB/s';
+  };
+
   container.innerHTML = `
-    <div class="detail-view-placeholder">
-      <div class="placeholder-icon">🌐</div>
-      <h4>Network Interfaces</h4>
-      <p>Interface list, active connections, and latency monitoring will appear here. (Phase 3)</p>
+    <div class="network-view">
+      <div class="network-summary">
+        <div class="network-summary-card">
+          <div class="network-summary-label">Download</div>
+          <div class="network-summary-value" style="color: var(--accent-ok);">↓ ${fmtRate(rx)}</div>
+        </div>
+        <div class="network-summary-card">
+          <div class="network-summary-label">Upload</div>
+          <div class="network-summary-value" style="color: var(--accent-cpu);">↑ ${fmtRate(tx)}</div>
+        </div>
+        <div class="network-summary-card">
+          <div class="network-summary-label">Total</div>
+          <div class="network-summary-value">${fmtRate(rx + tx)}</div>
+        </div>
+      </div>
+      <div class="detail-view-placeholder" style="margin-top: 16px;">
+        <div class="placeholder-icon">🌐</div>
+        <h4>Per-Interface Details</h4>
+        <p>Interface list, active connections, and latency monitoring require Phase 3 backend changes.</p>
+      </div>
     </div>
   `;
 }
 
 function renderBatteryView() {
   const container = document.getElementById('detailViewContent');
+  const battery = currentSnapshot?.battery;
+  const hasBattery = battery && (battery.percent > 0 || (!battery.isPlugged && battery.percent === 0));
+
+  let energyRows = '';
+  if (hasBattery) {
+    const procsWithEnergy = currentProcesses
+      .filter(p => p.energyMJ && p.energyMJ > 0)
+      .sort((a, b) => (b.energyMJ || 0) - (a.energyMJ || 0))
+      .slice(0, 10);
+
+    if (procsWithEnergy.length > 0) {
+      energyRows = procsWithEnergy.map(p => `
+        <tr onclick="showProcessModal('${p.name.replace(/'/g, "\\'")}')" style="cursor: pointer;">
+          <td>
+            <div class="process-name">
+              <div class="process-icon">◆</div>
+              <span>${p.name}</span>
+            </div>
+          </td>
+          <td>${p.pid}</td>
+          <td>${p.energyMJ?.toFixed(1) ?? '--'}</td>
+          <td>${p.cpuPercent.toFixed(1)}%</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  const statusText = !hasBattery ? 'No battery detected' :
+    battery.isCharging ? 'Charging' :
+    battery.isPlugged ? 'Plugged In' :
+    battery.percent < 20 ? 'Low Battery' : 'On Battery';
+
   container.innerHTML = `
-    <div class="detail-view-placeholder">
-      <div class="placeholder-icon">🔋</div>
-      <h4>Battery & Energy</h4>
-      <p>Battery history chart, per-process energy usage, and impact analysis will appear here. (Phase 4)</p>
+    <div class="battery-view">
+      <div class="battery-summary">
+        <div class="battery-summary-card">
+          <div class="battery-summary-label">Battery Level</div>
+          <div class="battery-summary-value">${hasBattery ? Math.round(battery.percent) + '%' : '—'}</div>
+          <div class="battery-visual" style="margin-top: 8px;">
+            <div class="battery-body">
+              <div class="battery-fill" style="width: ${hasBattery ? battery.percent : 0}%;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="battery-summary-card">
+          <div class="battery-summary-label">Status</div>
+          <div class="battery-summary-value" style="font-size: 18px;">${statusText}</div>
+          ${hasBattery ? `
+            <div class="battery-detail-row">Cycles: ${battery.cycleCount != null ? battery.cycleCount : '—'}</div>
+            <div class="battery-detail-row">Health: ${battery.health != null ? battery.health + '%' : '—'}</div>
+          ` : ''}
+        </div>
+      </div>
+      ${energyRows ? `
+        <div class="panel-header" style="margin-top: 16px;">
+          <div class="panel-title" style="--panel-accent: var(--accent-battery);">Per-Process Energy (mJ)</div>
+        </div>
+        <div class="table-wrapper">
+          <table class="process-table">
+            <thead>
+              <tr>
+                <th>Process</th>
+                <th>PID</th>
+                <th>Energy (mJ)</th>
+                <th>CPU</th>
+              </tr>
+            </thead>
+            <tbody>${energyRows}</tbody>
+          </table>
+        </div>
+      ` : `
+        <div class="detail-view-placeholder" style="margin-top: 16px;">
+          <div class="placeholder-icon">⚡</div>
+          <h4>Per-Process Energy</h4>
+          <p>${hasBattery ? 'No energy data available. Energy tracking requires macOS and powermetrics.' : 'No battery detected on this system.'}</p>
+        </div>
+      `}
     </div>
   `;
 }
 
 function renderStatusView() {
   const container = document.getElementById('detailViewContent');
+  const load = currentSnapshot?.loadAvg ?? 0;
+  const cpuTemp = currentSnapshot?.cpuTemp;
+
   container.innerHTML = `
-    <div class="detail-view-placeholder">
-      <div class="placeholder-icon">ℹ️</div>
-      <h4>System Status</h4>
-      <p>Overall system health summary and uptime information will appear here.</p>
+    <div class="status-view">
+      <div class="status-grid">
+        <div class="status-card">
+          <div class="status-card-icon">⚙️</div>
+          <div class="status-card-label">Load Average</div>
+          <div class="status-card-value">${load.toFixed(2)}</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-icon">🌡️</div>
+          <div class="status-card-label">CPU Temp</div>
+          <div class="status-card-value">${cpuTemp != null ? cpuTemp.toFixed(0) + '°C' : '—'}</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-icon">📊</div>
+          <div class="status-card-label">Processes</div>
+          <div class="status-card-value">${currentProcesses.length}</div>
+        </div>
+        <div class="status-card">
+          <div class="status-card-icon">🕐</div>
+          <div class="status-card-label">Last Update</div>
+          <div class="status-card-value" style="font-size: 14px;">${currentSnapshot ? new Date(currentSnapshot.timestamp).toLocaleTimeString() : '—'}</div>
+        </div>
+      </div>
+      <div class="detail-view-placeholder" style="margin-top: 16px;">
+        <div class="placeholder-icon">📈</div>
+        <h4>System Health History</h4>
+        <p>Historical uptime, thermal trends, and system health scoring will appear here in a future update.</p>
+      </div>
     </div>
   `;
 }
@@ -1208,6 +1423,7 @@ function updateDashboard(data) {
   document.getElementById('netValue').textContent = fmtRate(netRxRate + netTxRate);
   document.getElementById('netDetail').textContent = `↓ ${fmtRate(netRxRate)} • ↑ ${fmtRate(netTxRate)}`;
 
+  currentSnapshot = data;
   previousSnapshot = data;
 
   currentProcesses = data.processes || [];
