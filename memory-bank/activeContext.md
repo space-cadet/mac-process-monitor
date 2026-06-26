@@ -5,23 +5,26 @@
 ## Current Tasks
 
 ### 🔄 T20: Dashboard Detail Views — Clickable KPI Cards
-**Status:** Design complete, pending implementation.
+**Status:** Phase 1 complete (frontend skeleton), Phases 2-4 pending.
 **Started:** 2026-06-26.
 
 **What it is:** Clicking each KPI card (CPU, Memory, Disk, Network, Battery) switches the detail view below it:
-- **CPU** → Process list sorted by CPU (current default)
-- **Memory** → Process list sorted by memory + system memory pressure gauge
-- **Disk** → Disk/volume list with per-mount I/O stats, queue depth, SMART status
-- **Network** → Network interface list + active connections table + latency sparkline
-- **Battery** → Battery history chart + per-process energy/impact table
+- **CPU** → Process list sorted by CPU (current default) ✅
+- **Memory** → Process list sorted by memory + system memory pressure gauge (placeholder)
+- **Disk** → Disk/volume list with per-mount I/O stats, queue depth, SMART status (placeholder)
+- **Network** → Network interface list + active connections table + latency sparkline (placeholder)
+- **Battery** → Battery history chart + per-process energy/impact table (placeholder)
+
+**Phase 1 implemented (2026-06-26):**
+- Click handlers on all 6 KPI cards
+- Active card state (border highlight + shadow + lift)
+- `localStorage` persistence (`procmon_active_card`)
+- `renderDetailView()` dispatcher
+- Process list moved into CPU detail view
+- Search + List/Tree buttons hidden when not on CPU card
+- Cache-busting versions bumped
 
 **Design doc:** [Dashboard Detail Views](memory-bank/implementation-details/dashboard-detail-views.md)
-
-**Key design decisions:**
-- Card selection persisted to `localStorage`
-- Default active card: CPU
-- 200ms CSS transition on view swap
-- Responsive: cards scroll horizontally on mobile
 
 **Open questions:**
 - Should chart tabs auto-sync with selected card?
